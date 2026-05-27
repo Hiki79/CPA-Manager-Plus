@@ -140,6 +140,7 @@
     "error_forbidden": "Access denied, insufficient permissions",
     "error_not_found": "Server address invalid or management API not enabled",
     "error_server": "Internal server error, please try again later",
+    "error_backend_detail": "backend detail",
     "error_cors": "Cross-origin request blocked, please check server configuration",
     "error_ssl": "SSL/TLS certificate verification failed"
   },
