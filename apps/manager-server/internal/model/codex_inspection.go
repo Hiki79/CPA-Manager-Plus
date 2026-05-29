@@ -25,11 +25,12 @@ const (
 	CodexInspectionTriggerManual    = "manual"
 	CodexInspectionTriggerScheduled = "scheduled"
 
-	CodexInspectionActionStatusNone    = "none"
-	CodexInspectionActionStatusPending = "pending"
-	CodexInspectionActionStatusSuccess = "success"
-	CodexInspectionActionStatusFailed  = "failed"
-	CodexInspectionActionStatusSkipped = "skipped"
+	CodexInspectionActionStatusNone        = "none"
+	CodexInspectionActionStatusPending     = "pending"
+	CodexInspectionActionStatusSuccess     = "success"
+	CodexInspectionActionStatusFailed      = "failed"
+	CodexInspectionActionStatusSkipped     = "skipped"
+	CodexInspectionActionStatusNeedsReview = "needs_review"
 )
 
 type ManagerCodexInspectionConfig struct {
@@ -311,6 +312,8 @@ func NormalizeCodexInspectionActionStatus(value string, action string) string {
 		return CodexInspectionActionStatusFailed
 	case CodexInspectionActionStatusSkipped:
 		return CodexInspectionActionStatusSkipped
+	case CodexInspectionActionStatusNeedsReview:
+		return CodexInspectionActionStatusNeedsReview
 	case CodexInspectionActionStatusPending:
 		return CodexInspectionActionStatusPending
 	default:

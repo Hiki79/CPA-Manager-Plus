@@ -108,12 +108,29 @@ type inspectionDecision struct {
 	IsQuota      bool
 }
 
+type fileActionGroup struct {
+	FileName string
+	Items    []model.CodexInspectionResult
+	Action   string
+	Mixed    bool
+}
+
+type actionEndpointError struct {
+	Endpoint string
+	Err      error
+}
+
 type unauthorizedReason string
 
 const (
 	unauthorizedReasonUnknown     unauthorizedReason = "unknown"
 	unauthorizedReasonExpired     unauthorizedReason = "expired"
 	unauthorizedReasonInvalidated unauthorizedReason = "invalidated"
+)
+
+const (
+	fileActionDuplicateReason = "CPA 认证文件动作按文件执行，该文件已由另一条结果处理"
+	fileActionMixedReason     = "同一认证文件下存在多个不同建议动作，文件级处理已阻止，请到认证文件管理中手动处理"
 )
 
 type codexRateLimit struct {
@@ -206,6 +223,22 @@ func (s *Service) Run(ctx context.Context, req RunRequest) (RunDetail, error) {
 	})
 
 	results := s.inspectAccounts(ctx, setup, settings, run.ID, sampled, logger)
+	if err := ctx.Err(); err != nil {
+		for _, result := range results {
+			result.RunID = run.ID
+			_, _ = s.store.InsertCodexInspectionResult(persistCtx, result)
+		}
+		run = summarizeRun(run, results)
+		run.Status = model.CodexInspectionStatusFailed
+		run.Error = err.Error()
+		run.FinishedAtMS = time.Now().UnixMilli()
+		if err := s.store.UpdateCodexInspectionRun(persistCtx, run); err != nil {
+			return RunDetail{}, err
+		}
+		logger.warning(persistCtx, "Codex 巡检已取消", map[string]any{"error": run.Error})
+		return s.GetRun(persistCtx, run.ID)
+	}
+
 	results = resolveAutoActionResults(settings.AutoActionMode, results)
 	actionOutcomes := s.executeAutoActions(ctx, setup, settings, results, logger)
 	results = applyActionOutcomes(results, actionOutcomes)
@@ -826,19 +859,34 @@ func (s *Service) executeAction(ctx context.Context, setup store.Setup, item mod
 	case "disable", "enable":
 		disabled := item.Action == "disable"
 		payload := map[string]any{"name": item.FileName, "disabled": disabled}
-		if err, status := s.patchAuthFile(ctx, setup, "/auth-files", payload); err != nil {
-			if statusErr, statusCode := s.patchAuthFile(ctx, setup, "/auth-files/status", payload); statusErr == nil {
-				return nil
-			} else if shouldFallbackManagement(status) && shouldFallbackManagement(statusCode) {
-				if err := s.patchAuthFileOnly(ctx, setup, "/v0/management/auth-files", payload); err != nil {
-					return s.patchAuthFileOnly(ctx, setup, "/v0/management/auth-files/status", payload)
-				}
-				return nil
-			} else {
-				return statusErr
-			}
+		primaryErr, primaryStatus := s.patchAuthFile(ctx, setup, "/auth-files", payload)
+		if primaryErr == nil {
+			return nil
 		}
-		return nil
+		statusErr, statusCode := s.patchAuthFile(ctx, setup, "/auth-files/status", payload)
+		if statusErr == nil {
+			return nil
+		}
+		if shouldFallbackManagement(primaryStatus) && shouldFallbackManagement(statusCode) {
+			managementErr, _ := s.patchAuthFile(ctx, setup, "/v0/management/auth-files", payload)
+			if managementErr == nil {
+				return nil
+			}
+			managementStatusErr, _ := s.patchAuthFile(ctx, setup, "/v0/management/auth-files/status", payload)
+			if managementStatusErr == nil {
+				return nil
+			}
+			return combineActionEndpointErrors(
+				actionEndpointError{Endpoint: "/auth-files", Err: primaryErr},
+				actionEndpointError{Endpoint: "/auth-files/status", Err: statusErr},
+				actionEndpointError{Endpoint: "/v0/management/auth-files", Err: managementErr},
+				actionEndpointError{Endpoint: "/v0/management/auth-files/status", Err: managementStatusErr},
+			)
+		}
+		return combineActionEndpointErrors(
+			actionEndpointError{Endpoint: "/auth-files", Err: primaryErr},
+			actionEndpointError{Endpoint: "/auth-files/status", Err: statusErr},
+		)
 	default:
 		return nil
 	}
@@ -861,6 +909,20 @@ func (s *Service) deleteAuthFile(ctx context.Context, setup store.Setup, path st
 func (s *Service) patchAuthFileOnly(ctx context.Context, setup store.Setup, path string, payload map[string]any) error {
 	err, _ := s.patchAuthFile(ctx, setup, path, payload)
 	return err
+}
+
+func combineActionEndpointErrors(items ...actionEndpointError) error {
+	parts := make([]string, 0, len(items))
+	for _, item := range items {
+		if item.Err == nil {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s: %v", item.Endpoint, item.Err))
+	}
+	if len(parts) == 0 {
+		return nil
+	}
+	return errors.New(strings.Join(parts, "; "))
 }
 
 func (s *Service) patchAuthFile(ctx context.Context, setup store.Setup, path string, payload map[string]any) (error, int) {
@@ -1099,53 +1161,54 @@ func selectAutoActionItems(mode string, results []model.CodexInspectionResult) (
 	if mode == model.CodexInspectionAutoActionNone {
 		return nil, nil
 	}
-	const duplicateReason = "CPA 认证文件动作按文件执行，该文件已由另一条结果处理"
-	const mixedActionReason = "同一认证文件下存在多个不同建议动作，文件级自动处理已跳过，请手动确认"
 
+	items := make([]model.CodexInspectionResult, 0)
+	outcomes := make([]ActionOutcome, 0)
+	for _, group := range buildExecutableFileActionGroups(results) {
+		if group.Mixed {
+			for _, result := range group.Items {
+				outcomes = append(outcomes, needsReviewActionOutcome(result, result.Action, fileActionMixedReason))
+			}
+			continue
+		}
+		if len(group.Items) == 0 || !allowAutoAction(mode, group.Items[0]) {
+			continue
+		}
+		items = append(items, group.Items[0])
+		for _, result := range group.Items[1:] {
+			outcomes = append(outcomes, skippedActionOutcome(result, result.Action, fileActionDuplicateReason))
+		}
+	}
+	return items, outcomes
+}
+
+func buildExecutableFileActionGroups(results []model.CodexInspectionResult) []fileActionGroup {
 	groupOrder := make([]string, 0)
-	groups := map[string][]model.CodexInspectionResult{}
+	groupsByFileName := map[string]*fileActionGroup{}
 	for _, result := range results {
-		if !allowAutoAction(mode, result) {
+		if !isExecutableInspectionAction(result.Action) {
 			continue
 		}
 		fileName := strings.TrimSpace(result.FileName)
 		if fileName == "" {
 			continue
 		}
-		if _, ok := groups[fileName]; !ok {
+		group, ok := groupsByFileName[fileName]
+		if !ok {
+			group = &fileActionGroup{FileName: fileName, Action: result.Action}
+			groupsByFileName[fileName] = group
 			groupOrder = append(groupOrder, fileName)
 		}
-		groups[fileName] = append(groups[fileName], result)
+		if result.Action != group.Action {
+			group.Mixed = true
+		}
+		group.Items = append(group.Items, result)
 	}
-
-	items := make([]model.CodexInspectionResult, 0)
-	outcomes := make([]ActionOutcome, 0)
+	groups := make([]fileActionGroup, 0, len(groupOrder))
 	for _, fileName := range groupOrder {
-		group := groups[fileName]
-		if len(group) == 0 {
-			continue
-		}
-		action := group[0].Action
-		mixedAction := false
-		for _, result := range group[1:] {
-			if result.Action != action {
-				mixedAction = true
-				break
-			}
-		}
-		if mixedAction {
-			for _, result := range group {
-				outcomes = append(outcomes, skippedActionOutcome(result, result.Action, mixedActionReason))
-			}
-			continue
-		}
-
-		items = append(items, group[0])
-		for _, result := range group[1:] {
-			outcomes = append(outcomes, skippedActionOutcome(result, result.Action, duplicateReason))
-		}
+		groups = append(groups, *groupsByFileName[fileName])
 	}
-	return items, outcomes
+	return groups
 }
 
 func allowAutoAction(mode string, result model.CodexInspectionResult) bool {
@@ -1168,23 +1231,15 @@ func selectManualActionItems(
 	items := make([]model.CodexInspectionResult, 0, len(selected))
 	outcomes := make([]ActionOutcome, 0)
 	seenFileNames := map[string]struct{}{}
-	canonicalByFileName := map[string]int64{}
-	for _, result := range results {
-		if !isExecutableInspectionAction(result.Action) {
-			continue
-		}
-		fileName := strings.TrimSpace(result.FileName)
-		if fileName == "" {
-			continue
-		}
-		if _, ok := canonicalByFileName[fileName]; !ok {
-			canonicalByFileName[fileName] = result.ID
-		}
+	groupByFileName := map[string]fileActionGroup{}
+	for _, group := range buildExecutableFileActionGroups(results) {
+		groupByFileName[group.FileName] = group
 	}
 	for _, result := range results {
 		if _, ok := selected[result.ID]; !ok {
 			continue
 		}
+		fileName := strings.TrimSpace(result.FileName)
 		if !isExecutableInspectionAction(result.Action) {
 			outcomes = append(outcomes, skippedActionOutcome(result, result.Action, "该巡检结果不是可执行动作"))
 			continue
@@ -1196,13 +1251,20 @@ func selectManualActionItems(
 		case model.CodexInspectionActionStatusSkipped:
 			outcomes = append(outcomes, skippedActionOutcome(result, result.Action, "该建议动作已跳过"))
 			continue
+		case model.CodexInspectionActionStatusNeedsReview:
+			outcomes = append(outcomes, needsReviewActionOutcome(result, result.Action, "该建议动作需要到认证文件管理中人工处理"))
+			continue
 		}
-		fileName := strings.TrimSpace(result.FileName)
 		if fileName == "" {
 			outcomes = append(outcomes, failedActionOutcome(result, result.Action, "认证文件名为空，无法执行"))
 			continue
 		}
-		if canonicalID, ok := canonicalByFileName[fileName]; ok && canonicalID != result.ID {
+		group, ok := groupByFileName[fileName]
+		if ok && group.Mixed {
+			outcomes = append(outcomes, needsReviewActionOutcome(result, result.Action, fileActionMixedReason))
+			continue
+		}
+		if ok && len(group.Items) > 0 && group.Items[0].ID != result.ID {
 			outcomes = append(outcomes, skippedActionOutcome(result, result.Action, "CPA 认证文件动作按文件执行，该文件已有另一条结果作为可执行项"))
 			continue
 		}
@@ -1383,6 +1445,19 @@ func failedActionOutcome(item model.CodexInspectionResult, action string, messag
 		Action:         action,
 		Status:         model.CodexInspectionActionStatusFailed,
 		Success:        false,
+		Error:          message,
+	}
+}
+
+func needsReviewActionOutcome(item model.CodexInspectionResult, action string, message string) ActionOutcome {
+	return ActionOutcome{
+		ResultID:       item.ID,
+		AccountKey:     item.AccountKey,
+		FileName:       item.FileName,
+		DisplayAccount: item.DisplayAccount,
+		Action:         action,
+		Status:         model.CodexInspectionActionStatusNeedsReview,
+		Success:        true,
 		Error:          message,
 	}
 }
