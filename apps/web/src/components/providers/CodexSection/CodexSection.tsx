@@ -1,8 +1,9 @@
-import { Fragment, useMemo } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
+import { IconChevronDown, IconChevronUp } from '@/components/ui/icons';
 import iconCodex from '@/assets/icons/codex.svg';
 import type { ProviderKeyConfig } from '@/types';
 import { maskApiKey } from '@/utils/format';
@@ -17,6 +18,11 @@ import {
   hasDisableAllModelsRule,
   type ProviderRecentUsageMap,
 } from '../utils';
+import {
+  sortCodexConfigsByPriority,
+  type CodexProviderSortDirection,
+  type IndexedCodexProviderConfig,
+} from './sort';
 
 interface CodexSectionProps {
   configs: ProviderKeyConfig[];
@@ -44,6 +50,7 @@ export function CodexSection({
   const { t } = useTranslation();
   const actionsDisabled = disableControls || loading || isSwitching;
   const toggleDisabled = disableControls || loading || isSwitching;
+  const [sortDirection, setSortDirection] = useState<CodexProviderSortDirection>('desc');
 
   const statusBarCache = useMemo(() => {
     const cache = new Map<string, ReturnType<typeof statusBarDataFromRecentRequests>>();
@@ -62,6 +69,52 @@ export function CodexSection({
     return cache;
   }, [configs, usageByProvider]);
 
+  const sortedConfigs = useMemo(
+    () => sortCodexConfigsByPriority(configs, sortDirection),
+    [configs, sortDirection]
+  );
+
+  const toggleSortDirection = () => {
+    setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+  };
+
+  const renderHeaderActions = () => (
+    <div className={styles.cardHeaderActions}>
+      <div className={styles.sortControls}>
+        <span className={styles.sortLabel}>{t('ai_providers.sort_by_priority')}</span>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={toggleSortDirection}
+          className={styles.sortDirectionButton}
+          disabled={actionsDisabled}
+          title={
+            sortDirection === 'asc'
+              ? t('ai_providers.sort_ascending')
+              : t('ai_providers.sort_descending')
+          }
+          aria-label={
+            sortDirection === 'asc'
+              ? t('ai_providers.sort_ascending')
+              : t('ai_providers.sort_descending')
+          }
+        >
+          <span className={styles.sortDirectionIcon}>
+            {sortDirection === 'asc' ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
+          </span>
+          <span>
+            {sortDirection === 'asc'
+              ? t('ai_providers.sort_asc_short')
+              : t('ai_providers.sort_desc_short')}
+          </span>
+        </Button>
+      </div>
+      <Button size="sm" onClick={onAdd} disabled={actionsDisabled}>
+        {t('ai_providers.codex_add_button')}
+      </Button>
+    </div>
+  );
+
   return (
     <>
       <Card
@@ -71,31 +124,27 @@ export function CodexSection({
             {t('ai_providers.codex_title')}
           </span>
         }
-        extra={
-          <Button size="sm" onClick={onAdd} disabled={actionsDisabled}>
-            {t('ai_providers.codex_add_button')}
-          </Button>
-        }
+        extra={renderHeaderActions()}
       >
-        <ProviderList<ProviderKeyConfig>
-          items={configs}
+        <ProviderList<IndexedCodexProviderConfig>
+          items={sortedConfigs}
           loading={loading}
-          keyField={(item, index) => getProviderConfigKey(item, index)}
+          keyField={(item) => getProviderConfigKey(item.config, item.originalIndex)}
           emptyTitle={t('ai_providers.codex_empty_title')}
           emptyDescription={t('ai_providers.codex_empty_desc')}
-          onEdit={(_, index) => onEdit(index)}
-          onDelete={(_, index) => onDelete(index)}
+          onEdit={(item) => onEdit(item.originalIndex)}
+          onDelete={(item) => onDelete(item.originalIndex)}
           actionsDisabled={actionsDisabled}
-          getRowDisabled={(item) => hasDisableAllModelsRule(item.excludedModels)}
-          renderExtraActions={(item, index) => (
+          getRowDisabled={(item) => hasDisableAllModelsRule(item.config.excludedModels)}
+          renderExtraActions={(item) => (
             <ToggleSwitch
               label={t('ai_providers.config_toggle_label')}
-              checked={!hasDisableAllModelsRule(item.excludedModels)}
+              checked={!hasDisableAllModelsRule(item.config.excludedModels)}
               disabled={toggleDisabled}
-              onChange={(value) => void onToggle(index, value)}
+              onChange={(value) => void onToggle(item.originalIndex, value)}
             />
           )}
-          renderContent={(item, index) => {
+          renderContent={({ config: item, originalIndex }) => {
             const stats = getProviderTotalStats(
               usageByProvider,
               'codex',
@@ -106,7 +155,7 @@ export function CodexSection({
             const configDisabled = hasDisableAllModelsRule(item.excludedModels);
             const excludedModels = item.excludedModels ?? [];
             const statusData =
-              statusBarCache.get(getProviderConfigKey(item, index)) ||
+              statusBarCache.get(getProviderConfigKey(item, originalIndex)) ||
               statusBarDataFromRecentRequests([]);
 
             return (
@@ -142,8 +191,12 @@ export function CodexSection({
                 )}
                 {item.websockets !== undefined && (
                   <div className={styles.fieldRow}>
-                    <span className={styles.fieldLabel}>{t('ai_providers.codex_websockets_label')}:</span>
-                    <span className={styles.fieldValue}>{item.websockets ? t('common.yes') : t('common.no')}</span>
+                    <span className={styles.fieldLabel}>
+                      {t('ai_providers.codex_websockets_label')}:
+                    </span>
+                    <span className={styles.fieldValue}>
+                      {item.websockets ? t('common.yes') : t('common.no')}
+                    </span>
                   </div>
                 )}
                 {headerEntries.length > 0 && (
@@ -182,7 +235,10 @@ export function CodexSection({
                     </div>
                     <div className={styles.modelTagList}>
                       {excludedModels.map((model) => (
-                        <span key={model} className={`${styles.modelTag} ${styles.excludedModelTag}`}>
+                        <span
+                          key={model}
+                          className={`${styles.modelTag} ${styles.excludedModelTag}`}
+                        >
                           <span className={styles.modelName}>{model}</span>
                         </span>
                       ))}
