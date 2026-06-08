@@ -86,7 +86,7 @@ const shortLabel = (
 ) => {
   const fallback = t(fallbackKey, fallbackDefault ? { defaultValue: fallbackDefault } : undefined);
   const label = t(shortKey, { defaultValue: fallback });
-  return label === shortKey ? fallbackDefault ?? fallback : label;
+  return label === shortKey ? (fallbackDefault ?? fallback) : label;
 };
 
 const formatShortHash = (value: string | null | undefined) => {
@@ -215,6 +215,25 @@ const buildFailureDetails = (row: MonitoringEventRow, t: TFunction) => {
     label: buildFailureMetaText(row, t),
     copyText: [statusText, summary].filter(Boolean).join('\n'),
   };
+};
+
+const buildRealtimeTokenSummary = (row: MonitoringEventRow, t: TFunction) => {
+  const parts = [
+    `I ${formatCompactNumber(row.inputTokens)}`,
+    `O ${formatCompactNumber(row.outputTokens)}`,
+    `C ${formatCompactNumber(row.cachedTokens)}`,
+  ];
+  if (row.cacheCreationTokens > 0) {
+    parts.push(
+      `${shortLabel(t, 'monitoring.cache_creation_tokens_short', 'monitoring.cache_creation_tokens', 'Create')} ${formatCompactNumber(row.cacheCreationTokens)}`
+    );
+  }
+  if (row.cacheReadTokens > 0) {
+    parts.push(
+      `${shortLabel(t, 'monitoring.cache_read_tokens_short', 'monitoring.cache_read_tokens', 'Read')} ${formatCompactNumber(row.cacheReadTokens)}`
+    );
+  }
+  return parts.join(' · ');
 };
 
 export function RealtimeEventsPanelActions({
@@ -398,9 +417,7 @@ export function RealtimeEventsPanel({
               <th className={styles.realtimeTpsColumn}>{t('monitoring.column_output_tps')}</th>
               <th className={styles.realtimeLatencyColumn}>
                 <span className={styles.realtimeLatencyHeader}>
-                  <span className={styles.realtimeMetricLeft}>
-                    {t('monitoring.ttft_short')}
-                  </span>
+                  <span className={styles.realtimeMetricLeft}>{t('monitoring.ttft_short')}</span>
                   <span className={styles.realtimeMetricSeparator}>｜</span>
                   <span className={styles.realtimeMetricRight}>
                     {t('monitoring.elapsed_short')}
@@ -585,7 +602,7 @@ export function RealtimeEventsPanel({
                   <td>
                     <div className={styles.primaryCell}>
                       <span>{formatCompactNumber(row.totalTokens)}</span>
-                      <small>{`I ${formatCompactNumber(row.inputTokens)} · O ${formatCompactNumber(row.outputTokens)} · C ${formatCompactNumber(row.cachedTokens)}`}</small>
+                      <small>{buildRealtimeTokenSummary(row, t)}</small>
                     </div>
                   </td>
                   <td>{hasPrices ? formatUsd(row.totalCost) : '--'}</td>

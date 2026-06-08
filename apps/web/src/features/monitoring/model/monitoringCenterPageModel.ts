@@ -177,7 +177,11 @@ export const buildProviderOptionsFromValues = (
     [
       {
         value: 'all',
-        label: shortLabel(t, 'monitoring.filter_all_providers_short', 'monitoring.filter_all_providers'),
+        label: shortLabel(
+          t,
+          'monitoring.filter_all_providers_short',
+          'monitoring.filter_all_providers'
+        ),
       },
       ...buildSortedValueOptions(providers),
     ],
@@ -194,7 +198,11 @@ export const buildAccountOptions = (
     [
       {
         value: 'all',
-        label: shortLabel(t, 'monitoring.filter_all_accounts_short', 'monitoring.filter_all_accounts'),
+        label: shortLabel(
+          t,
+          'monitoring.filter_all_accounts_short',
+          'monitoring.filter_all_accounts'
+        ),
       },
       ...Array.from(
         new Map(
@@ -257,7 +265,11 @@ export const buildChannelOptionsFromValues = (
     [
       {
         value: 'all',
-        label: shortLabel(t, 'monitoring.filter_all_channels_short', 'monitoring.filter_all_channels'),
+        label: shortLabel(
+          t,
+          'monitoring.filter_all_channels_short',
+          'monitoring.filter_all_channels'
+        ),
       },
       ...buildSortedValueOptions(channels),
     ],
@@ -273,7 +285,11 @@ const buildApiKeyOptionsFromMap = (
     [
       {
         value: 'all',
-        label: shortLabel(t, 'monitoring.filter_all_api_keys_short', 'monitoring.filter_all_api_keys'),
+        label: shortLabel(
+          t,
+          'monitoring.filter_all_api_keys_short',
+          'monitoring.filter_all_api_keys'
+        ),
       },
       ...Array.from(optionMap.entries())
         .sort((left, right) => left[1].localeCompare(right[1]))
@@ -318,11 +334,19 @@ export const buildStatusOptions = (t: TFunction): MonitoringOption[] => [
   },
   {
     value: 'success',
-    label: shortLabel(t, 'monitoring.filter_status_success_short', 'monitoring.filter_status_success'),
+    label: shortLabel(
+      t,
+      'monitoring.filter_status_success_short',
+      'monitoring.filter_status_success'
+    ),
   },
   {
     value: 'failed',
-    label: shortLabel(t, 'monitoring.filter_status_failed_short', 'monitoring.filter_status_failed'),
+    label: shortLabel(
+      t,
+      'monitoring.filter_status_failed_short',
+      'monitoring.filter_status_failed'
+    ),
   },
 ];
 
@@ -536,15 +560,33 @@ export const buildSecondarySummaryCards = (
   locale: string,
   t: TFunction
 ): SummaryCardProps[] => {
+  const totalCacheTokens =
+    summary.cachedTokens + summary.cacheCreationTokens + summary.cacheReadTokens;
+  const hasFineGrainedCache = summary.cacheCreationTokens > 0 || summary.cacheReadTokens > 0;
+  const tokenMixTotal =
+    summary.inputTokens + summary.outputTokens + summary.reasoningTokens + totalCacheTokens;
   const cachedTokenMetaParts = [
-    `${t('monitoring.of_input_tokens')} ${formatPercent(summary.inputTokens > 0 ? summary.cachedTokens / summary.inputTokens : 0)}`,
+    hasFineGrainedCache
+      ? `${t('monitoring.of_token_mix')} ${formatPercent(tokenMixTotal > 0 ? totalCacheTokens / tokenMixTotal : 0)}`
+      : `${t('monitoring.of_input_tokens')} ${formatPercent(summary.inputTokens > 0 ? totalCacheTokens / summary.inputTokens : 0)}`,
   ];
 
-  if (summary.cacheCreationTokens > 0 || summary.cacheReadTokens > 0) {
-    cachedTokenMetaParts.push(
-      `${t('monitoring.cache_creation_tokens_short')} ${formatCompactNumber(summary.cacheCreationTokens)}`,
-      `${t('monitoring.cache_read_tokens_short')} ${formatCompactNumber(summary.cacheReadTokens)}`
-    );
+  if (hasFineGrainedCache) {
+    if (summary.cachedTokens > 0) {
+      cachedTokenMetaParts.push(
+        `${shortLabel(t, 'monitoring.cached_tokens_short', 'monitoring.cached_tokens')} ${formatCompactNumber(summary.cachedTokens)}`
+      );
+    }
+    if (summary.cacheCreationTokens > 0) {
+      cachedTokenMetaParts.push(
+        `${t('monitoring.cache_creation_tokens_short')} ${formatCompactNumber(summary.cacheCreationTokens)}`
+      );
+    }
+    if (summary.cacheReadTokens > 0) {
+      cachedTokenMetaParts.push(
+        `${t('monitoring.cache_read_tokens_short')} ${formatCompactNumber(summary.cacheReadTokens)}`
+      );
+    }
   }
 
   return [
@@ -581,8 +623,8 @@ export const buildSecondarySummaryCards = (
     {
       label: shortLabel(t, 'monitoring.cached_tokens_short', 'monitoring.cached_tokens'),
       fullLabel: t('monitoring.cached_tokens'),
-      value: formatCompactNumber(summary.cachedTokens),
-      valueTitle: formatFullNumber(summary.cachedTokens, locale),
+      value: formatCompactNumber(totalCacheTokens),
+      valueTitle: formatFullNumber(totalCacheTokens, locale),
       meta: cachedTokenMetaParts.join(' · '),
       variant: 'secondary',
       icon: 'cache',

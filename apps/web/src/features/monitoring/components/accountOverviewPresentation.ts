@@ -146,6 +146,22 @@ export const buildAccountSummaryMetrics = (
     value: formatCompactNumber(row.cachedTokens),
   },
   {
+    key: 'cache-creation-tokens',
+    label: shortLabel(
+      t,
+      'monitoring.cache_creation_tokens_short',
+      'monitoring.cache_creation_tokens'
+    ),
+    fullLabel: t('monitoring.cache_creation_tokens'),
+    value: formatCompactNumber(row.cacheCreationTokens),
+  },
+  {
+    key: 'cache-read-tokens',
+    label: shortLabel(t, 'monitoring.cache_read_tokens_short', 'monitoring.cache_read_tokens'),
+    fullLabel: t('monitoring.cache_read_tokens'),
+    value: formatCompactNumber(row.cacheReadTokens),
+  },
+  {
     key: 'estimated-cost',
     label: shortLabel(t, 'monitoring.estimated_cost_short', 'monitoring.estimated_cost'),
     fullLabel: t('monitoring.estimated_cost'),

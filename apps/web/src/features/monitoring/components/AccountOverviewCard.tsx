@@ -317,24 +317,40 @@ export function AccountTokenMetricGrid({
   const getTokenMetricIcon = (key: string) => {
     if (key === 'input-tokens') return <IconInbox size={13} />;
     if (key === 'output-tokens') return <IconTrendingUp size={13} />;
-    if (key === 'cached-tokens') return <IconTimer size={13} />;
+    if (key === 'cached-tokens' || key === 'cache-creation-tokens' || key === 'cache-read-tokens') {
+      return <IconTimer size={13} />;
+    }
     return <IconChartLine size={13} />;
   };
   const getTokenMetricToneClassName = (key: string) => {
     if (key === 'input-tokens') return styles.accountMetricIconInput;
     if (key === 'output-tokens') return styles.accountMetricIconOutput;
-    if (key === 'cached-tokens') return styles.accountMetricIconCached;
+    if (key === 'cached-tokens' || key === 'cache-creation-tokens' || key === 'cache-read-tokens') {
+      return styles.accountMetricIconCached;
+    }
     return styles.accountMetricIconTotal;
   };
 
   if (variant === 'table') {
     const tokenStructureMetrics = metrics.filter((metric) =>
-      ['input-tokens', 'output-tokens', 'cached-tokens'].includes(metric.key)
+      [
+        'input-tokens',
+        'output-tokens',
+        'cached-tokens',
+        'cache-creation-tokens',
+        'cache-read-tokens',
+      ].includes(metric.key)
     );
     const getTokenStructureRowToneClassName = (key: string) => {
       if (key === 'input-tokens') return styles.tokenStructureRowInput;
       if (key === 'output-tokens') return styles.tokenStructureRowOutput;
-      if (key === 'cached-tokens') return styles.tokenStructureRowCached;
+      if (
+        key === 'cached-tokens' ||
+        key === 'cache-creation-tokens' ||
+        key === 'cache-read-tokens'
+      ) {
+        return styles.tokenStructureRowCached;
+      }
       return '';
     };
 
@@ -457,7 +473,11 @@ function AccountHealthStatusPanel({
     },
     {
       key: 'success-rate',
-      label: shortLabel(t, 'monitoring.column_success_rate_short', 'monitoring.column_success_rate'),
+      label: shortLabel(
+        t,
+        'monitoring.column_success_rate_short',
+        'monitoring.column_success_rate'
+      ),
       fullLabel: t('monitoring.column_success_rate'),
       value: formatPercent(row.successRate),
       className: getSuccessRateClassName(row.successRate),

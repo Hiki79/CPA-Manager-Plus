@@ -149,16 +149,16 @@ describe('MonitoringCenterPage summary cards', () => {
     expect(html).toContain('25.5K');
     expect(html).toContain('1.9K');
     expect(html).toContain('2.8B');
-    expect(html).toContain('2.6B');
+    expect(html).toContain('3.6B');
     expect(html).toContain('role="tooltip"');
     expect(html).toContain('2,795,200,000');
     expect(html).toContain('2,783,500,000');
-    expect(html).toContain('2,595,300,000');
+    expect(html).toContain('3,595,200,000');
     expect(html).toContain('$9,999,999.99');
     expect(html).toContain('Reasoning 5.0M');
     expect(html).toContain('Share 99.6%');
     expect(html).toContain('Share 0.4%');
-    expect(html).toContain('Input share 93.2% · Create 555.5M · Read 444.4M');
+    expect(html).toContain('Share 56.2% · Cached Tokens 2.6B · Create 555.5M · Read 444.4M');
   });
 
   it('hides cache creation and read meta when both cached sub-metrics are zero', () => {
