@@ -707,6 +707,36 @@
   .segmentButton {
     min-height: 32px;
     padding: 0 14px;
+    border: 0;
+    border-left: 1px solid color-mix(in srgb, var(--usage-border) 72%, transparent);
+    background: transparent;
+    color: color-mix(in srgb, var(--usage-muted) 84%, var(--usage-text));
+    box-shadow: none;
+    transform: none;
+
+    &:first-child {
+      border-left: 0;
+    }
+
+    &:hover {
+      background: color-mix(in srgb, var(--usage-primary) 5%, var(--usage-surface));
+      color: var(--usage-text);
+      transform: none;
+    }
+  }
+
+  .segmentButtonActive,
+  .segmentButtonActive:hover {
+    border-left-color: transparent;
+    background: color-mix(in srgb, var(--usage-primary) 12%, var(--usage-surface));
+    color: var(--usage-primary);
+    font-weight: 800;
+    box-shadow: none;
+    transform: none;
+  }
+
+  .segmentButtonActive + .segmentButton {
+    border-left-color: transparent;
   }
 }
 
