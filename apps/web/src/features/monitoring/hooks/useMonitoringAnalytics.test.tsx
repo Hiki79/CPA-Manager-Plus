@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -101,7 +102,7 @@ describe('useMonitoringAnalytics', () => {
     filters,
     include = { summary: true },
   }: HarnessProps) {
-    latestResult = useMonitoringAnalytics({
+    const result = useMonitoringAnalytics({
       fromMs,
       toMs,
       nowMs,
@@ -111,6 +112,9 @@ describe('useMonitoringAnalytics', () => {
       include,
       throttleMs: 0,
     });
+    useEffect(() => {
+      latestResult = result;
+    }, [result]);
     return null;
   }
 
