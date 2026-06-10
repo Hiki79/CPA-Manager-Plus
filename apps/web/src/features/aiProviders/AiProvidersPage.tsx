@@ -1,26 +1,44 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
   AmpcodeSection,
-  ClaudeSection,
-  CodexSection,
-  GeminiSection,
-  OpenAISection,
-  VertexSection,
-  ProviderNav,
+  buildProviderRows,
+  filterAndSortProviderRows,
+  PROVIDER_KIND_LABELS,
+  ProviderDetailDrawer,
+  ProviderTable,
+  ProviderToolbar,
   useProviderRecentRequests,
+  type ProviderKind,
+  type ProviderKindFilter,
+  type ProviderRow,
+  type ProviderSortDirection,
+  type ProviderSortOption,
 } from '@/components/providers';
 import {
   withDisableAllModelsRule,
   withoutDisableAllModelsRule,
 } from '@/components/providers/utils';
 import { usePageTransitionLayer } from '@/components/common/PageTransitionLayer';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Select } from '@/components/ui/Select';
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { ampcodeApi, providersApi } from '@/services/api';
 import { useAuthStore, useConfigStore, useNotificationStore, useThemeStore } from '@/stores';
-import type { GeminiKeyConfig, OpenAIProviderConfig, ProviderKeyConfig } from '@/types';
+import type { CloakConfig, GeminiKeyConfig, OpenAIProviderConfig, ProviderKeyConfig } from '@/types';
 import styles from './AiProvidersPage.module.scss';
+
+const PROVIDER_TABLE_DEFAULT_PAGE_SIZE = 10;
+const PROVIDER_TABLE_PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
+
+const DEFAULT_CLOAK_CONFIG: CloakConfig = {
+  mode: 'auto',
+  strictMode: false,
+  sensitiveWords: [],
+};
 
 export function AiProvidersPage() {
   const { t } = useTranslation();
@@ -57,8 +75,19 @@ export function AiProvidersPage() {
 
   const [configSwitchingKey, setConfigSwitchingKey] = useState<string | null>(null);
 
+  // 表格筛选 / 排序 / 详情状态
+  const [kindFilter, setKindFilter] = useState<ProviderKindFilter>('all');
+  const [searchText, setSearchText] = useState('');
+  const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
+  const [sortOption, setSortOption] = useState<ProviderSortOption>('priority');
+  const [sortDirection, setSortDirection] = useState<ProviderSortDirection>('desc');
+  const [detailRowKey, setDetailRowKey] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PROVIDER_TABLE_DEFAULT_PAGE_SIZE);
+
   const disableControls = connectionStatus !== 'connected';
   const isSwitching = Boolean(configSwitchingKey);
+  const actionsDisabled = disableControls || loading || isSwitching;
 
   const pageTransitionLayer = usePageTransitionLayer();
   const isCurrentLayer = pageTransitionLayer ? pageTransitionLayer.status === 'current' : true;
@@ -160,32 +189,99 @@ export function AiProvidersPage() {
     [navigate]
   );
 
-  const deleteGemini = async (index: number) => {
-    const entry = geminiKeys[index];
-    if (!entry) return;
-    showConfirmation({
-      title: t('ai_providers.gemini_delete_title', { defaultValue: 'Delete Gemini Key' }),
-      message: t('ai_providers.gemini_delete_confirm'),
-      variant: 'danger',
-      confirmText: t('common.confirm'),
-      onConfirm: async () => {
-        try {
-          await providersApi.deleteGeminiKey(entry.apiKey, entry.baseUrl);
-          const next = geminiKeys.filter((_, idx) => idx !== index);
-          setGeminiKeys(next);
-          updateConfigValue('gemini-api-key', next);
-          clearCache('gemini-api-key');
-          showNotification(t('notification.gemini_key_deleted'), 'success');
-        } catch (err: unknown) {
-          const message = getErrorMessage(err);
-          showNotification(`${t('notification.delete_failed')}: ${message}`, 'error');
-        }
-      },
+  // 统一行集合与派生数据
+  const rows = useMemo(
+    () =>
+      buildProviderRows({
+        gemini: geminiKeys,
+        codex: codexConfigs,
+        claude: claudeConfigs,
+        vertex: vertexConfigs,
+        openai: openaiProviders,
+        usageByProvider,
+      }),
+    [claudeConfigs, codexConfigs, geminiKeys, openaiProviders, usageByProvider, vertexConfigs]
+  );
+
+  const allModelNames = useMemo(() => {
+    const names = new Set<string>();
+    rows.forEach((row) => {
+      row.modelNames.forEach((name) => names.add(name));
     });
+    return Array.from(names).sort();
+  }, [rows]);
+
+  useEffect(() => {
+    // 配置变更后清理已不存在的模型筛选项，避免筛选结果一直为空。
+    setSelectedModels((prev) => {
+      if (prev.size === 0) return prev;
+
+      const availableModels = new Set(allModelNames);
+      const next = new Set(Array.from(prev).filter((name) => availableModels.has(name)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [allModelNames]);
+
+  const visibleRows = useMemo(
+    () =>
+      filterAndSortProviderRows(rows, {
+        kind: kindFilter,
+        searchText,
+        selectedModels,
+        sortOption,
+        sortDirection,
+      }),
+    [kindFilter, rows, searchText, selectedModels, sortDirection, sortOption]
+  );
+
+  const totalPages = Math.max(1, Math.ceil(visibleRows.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * pageSize;
+  const pagedRows = visibleRows.slice(pageStart, pageStart + pageSize);
+  const pageStartItem = visibleRows.length === 0 ? 0 : pageStart + 1;
+  const pageEndItem = Math.min(visibleRows.length, pageStart + pageSize);
+
+  useEffect(() => {
+    setPage(1);
+  }, [kindFilter, searchText, selectedModels, sortDirection, sortOption]);
+
+  useEffect(() => {
+    if (page === currentPage) return;
+    setPage(currentPage);
+  }, [currentPage, page]);
+
+  const kindCounts = useMemo(() => {
+    const counts: Record<ProviderKindFilter, number> = {
+      all: rows.length,
+      gemini: 0,
+      codex: 0,
+      claude: 0,
+      vertex: 0,
+      openai: 0,
+    };
+    rows.forEach((row) => {
+      counts[row.kind] += 1;
+    });
+    return counts;
+  }, [rows]);
+
+  const detailRow = useMemo(
+    () => (detailRowKey ? (rows.find((row) => row.key === detailRowKey) ?? null) : null),
+    [detailRowKey, rows]
+  );
+
+  const filtersActive =
+    kindFilter !== 'all' || searchText.trim() !== '' || selectedModels.size > 0;
+
+  const clearFilters = () => {
+    setKindFilter('all');
+    setSearchText('');
+    setSelectedModels(new Set());
   };
 
+  // 启停（gemini/codex/claude/vertex 走 excludedModels 规则）
   const setConfigEnabled = async (
-    provider: 'gemini' | 'codex' | 'claude' | 'vertex',
+    provider: Exclude<ProviderKind, 'openai'>,
     index: number,
     enabled: boolean
   ) => {
@@ -323,12 +419,146 @@ export function AiProvidersPage() {
     }
   };
 
-  const deleteProviderEntry = async (type: 'codex' | 'claude', index: number) => {
+  const setProviderWebsocketsEnabled = async (
+    provider: 'codex' | 'claude',
+    index: number,
+    enabled: boolean
+  ) => {
+    const source = provider === 'codex' ? codexConfigs : claudeConfigs;
+    const current = source[index];
+    if (!current) return;
+
+    const switchingKey = `${provider}:${current.apiKey}:websockets`;
+    setConfigSwitchingKey(switchingKey);
+
+    const previousList = source;
+    const nextItem: ProviderKeyConfig = { ...current, websockets: enabled };
+    const nextList = previousList.map((item, idx) => (idx === index ? nextItem : item));
+
+    if (provider === 'codex') {
+      setCodexConfigs(nextList);
+      updateConfigValue('codex-api-key', nextList);
+      clearCache('codex-api-key');
+    } else {
+      setClaudeConfigs(nextList);
+      updateConfigValue('claude-api-key', nextList);
+      clearCache('claude-api-key');
+    }
+
+    try {
+      if (provider === 'codex') {
+        await providersApi.saveCodexConfigs(nextList);
+        showNotification(t('notification.codex_config_updated'), 'success');
+      } else {
+        await providersApi.saveClaudeConfigs(nextList);
+        showNotification(t('notification.claude_config_updated'), 'success');
+      }
+    } catch (err: unknown) {
+      const message = getErrorMessage(err);
+      if (provider === 'codex') {
+        setCodexConfigs(previousList);
+        updateConfigValue('codex-api-key', previousList);
+        clearCache('codex-api-key');
+      } else {
+        setClaudeConfigs(previousList);
+        updateConfigValue('claude-api-key', previousList);
+        clearCache('claude-api-key');
+      }
+      showNotification(`${t('notification.update_failed')}: ${message}`, 'error');
+    } finally {
+      setConfigSwitchingKey(null);
+    }
+  };
+
+  const setProviderCloakEnabled = async (
+    provider: 'codex' | 'claude',
+    index: number,
+    enabled: boolean
+  ) => {
+    const source = provider === 'codex' ? codexConfigs : claudeConfigs;
+    const current = source[index];
+    if (!current) return;
+
+    const switchingKey = `${provider}:${current.apiKey}:cloak`;
+    setConfigSwitchingKey(switchingKey);
+
+    const previousList = source;
+    const nextItem: ProviderKeyConfig = enabled
+      ? { ...current, cloak: current.cloak ?? { ...DEFAULT_CLOAK_CONFIG, sensitiveWords: [] } }
+      : { ...current };
+    if (!enabled) {
+      delete nextItem.cloak;
+    }
+    const nextList = previousList.map((item, idx) => (idx === index ? nextItem : item));
+
+    if (provider === 'codex') {
+      setCodexConfigs(nextList);
+      updateConfigValue('codex-api-key', nextList);
+      clearCache('codex-api-key');
+    } else {
+      setClaudeConfigs(nextList);
+      updateConfigValue('claude-api-key', nextList);
+      clearCache('claude-api-key');
+    }
+
+    try {
+      if (provider === 'codex') {
+        await providersApi.saveCodexConfigs(nextList);
+        showNotification(t('notification.codex_config_updated'), 'success');
+      } else {
+        await providersApi.saveClaudeConfigs(nextList);
+        showNotification(t('notification.claude_config_updated'), 'success');
+      }
+    } catch (err: unknown) {
+      const message = getErrorMessage(err);
+      if (provider === 'codex') {
+        setCodexConfigs(previousList);
+        updateConfigValue('codex-api-key', previousList);
+        clearCache('codex-api-key');
+      } else {
+        setClaudeConfigs(previousList);
+        updateConfigValue('claude-api-key', previousList);
+        clearCache('claude-api-key');
+      }
+      showNotification(`${t('notification.update_failed')}: ${message}`, 'error');
+    } finally {
+      setConfigSwitchingKey(null);
+    }
+  };
+
+  // 删除（按 provider 分派，沿用既有 API 契约）
+  const deleteGemini = (index: number) => {
+    const entry = geminiKeys[index];
+    if (!entry) return;
+    showConfirmation({
+      title: t('ai_providers.gemini_delete_title', { defaultValue: 'Delete Gemini Key' }),
+      message: t('ai_providers.gemini_delete_confirm'),
+      variant: 'danger',
+      confirmText: t('common.confirm'),
+      onConfirm: async () => {
+        try {
+          await providersApi.deleteGeminiKey(entry.apiKey, entry.baseUrl);
+          const next = geminiKeys.filter((_, idx) => idx !== index);
+          setGeminiKeys(next);
+          updateConfigValue('gemini-api-key', next);
+          clearCache('gemini-api-key');
+          showNotification(t('notification.gemini_key_deleted'), 'success');
+        } catch (err: unknown) {
+          const message = getErrorMessage(err);
+          showNotification(`${t('notification.delete_failed')}: ${message}`, 'error');
+        }
+      },
+    });
+  };
+
+  const deleteProviderEntry = (type: 'codex' | 'claude', index: number) => {
     const source = type === 'codex' ? codexConfigs : claudeConfigs;
     const entry = source[index];
     if (!entry) return;
     showConfirmation({
-      title: t(`ai_providers.${type}_delete_title`, { defaultValue: `Delete ${type === 'codex' ? 'Codex' : 'Claude'} Config` }),
+      title: t(`ai_providers.${type}_delete_title`, {
+        defaultValue: `Delete ${type === 'codex' ? 'Codex' : 'Claude'} Config`,
+      }),
       message: t(`ai_providers.${type}_delete_confirm`),
       variant: 'danger',
       confirmText: t('common.confirm'),
@@ -357,7 +587,7 @@ export function AiProvidersPage() {
     });
   };
 
-  const deleteVertex = async (index: number) => {
+  const deleteVertex = (index: number) => {
     const entry = vertexConfigs[index];
     if (!entry) return;
     showConfirmation({
@@ -381,7 +611,7 @@ export function AiProvidersPage() {
     });
   };
 
-  const deleteOpenai = async (index: number) => {
+  const deleteOpenai = (index: number) => {
     const entry = openaiProviders[index];
     if (!entry) return;
     showConfirmation({
@@ -405,94 +635,198 @@ export function AiProvidersPage() {
     });
   };
 
+  // 行级回调分派
+  const handleRowToggle = (row: ProviderRow, enabled: boolean) => {
+    if (row.kind === 'openai') {
+      void setOpenAIProviderEnabled(row.originalIndex, enabled);
+    } else {
+      void setConfigEnabled(row.kind, row.originalIndex, enabled);
+    }
+  };
+
+  const handleRowWebsocketsToggle = (row: ProviderRow, enabled: boolean) => {
+    if (row.kind !== 'codex' && row.kind !== 'claude') return;
+    void setProviderWebsocketsEnabled(row.kind, row.originalIndex, enabled);
+  };
+
+  const handleRowCloakToggle = (row: ProviderRow, enabled: boolean) => {
+    if (row.kind !== 'codex' && row.kind !== 'claude') return;
+    void setProviderCloakEnabled(row.kind, row.originalIndex, enabled);
+  };
+
+  const handleRowEdit = (row: ProviderRow) => {
+    setDetailRowKey(null);
+    openEditor(`/ai-providers/${row.kind}/${row.originalIndex}`);
+  };
+
+  const handleRowDelete = (row: ProviderRow) => {
+    setDetailRowKey(null);
+    if (row.kind === 'gemini') {
+      deleteGemini(row.originalIndex);
+    } else if (row.kind === 'codex' || row.kind === 'claude') {
+      deleteProviderEntry(row.kind, row.originalIndex);
+    } else if (row.kind === 'vertex') {
+      deleteVertex(row.originalIndex);
+    } else {
+      deleteOpenai(row.originalIndex);
+    }
+  };
+
+  const handleAdd = (kind: ProviderKind) => {
+    openEditor(`/ai-providers/${kind}/new`);
+  };
+
+  const handlePageSizeChange = (value: string) => {
+    const nextSize = Number.parseInt(value, 10);
+    if (!Number.isFinite(nextSize) || nextSize <= 0) return;
+    setPageSize(nextSize);
+    setPage(1);
+  };
+
+  const emptyState =
+    rows.length > 0 && kindFilter !== 'all' && kindCounts[kindFilter] === 0 ? (
+      // 当前类型尚无配置：直接给“添加该类型配置”入口，避免“清除筛选”死胡同
+      <EmptyState
+        title={t('ai_providers.kind_empty_title', { name: PROVIDER_KIND_LABELS[kindFilter] })}
+        action={
+          <Button
+            size="sm"
+            onClick={() => handleAdd(kindFilter)}
+            disabled={actionsDisabled}
+          >
+            {t('ai_providers.add_kind_button', { name: PROVIDER_KIND_LABELS[kindFilter] })}
+          </Button>
+        }
+      />
+    ) : rows.length > 0 && filtersActive ? (
+      <EmptyState
+        title={t('ai_providers.table_filtered_empty_title')}
+        description={t('ai_providers.table_filtered_empty_desc')}
+        action={
+          <Button variant="secondary" size="sm" onClick={clearFilters} disabled={actionsDisabled}>
+            {t('ai_providers.clear_filters')}
+          </Button>
+        }
+      />
+    ) : (
+      <EmptyState
+        title={t('ai_providers.table_empty_title')}
+        description={t('ai_providers.table_empty_desc')}
+      />
+    );
+
   return (
     <div className={styles.container}>
       <div className={styles.content}>
         {error && <div className="error-box">{error}</div>}
 
-        <div id="provider-gemini">
-          <GeminiSection
-            configs={geminiKeys}
-            usageByProvider={usageByProvider}
-            loading={loading}
-            disableControls={disableControls}
-            isSwitching={isSwitching}
-            onAdd={() => openEditor('/ai-providers/gemini/new')}
-            onEdit={(index) => openEditor(`/ai-providers/gemini/${index}`)}
-            onDelete={deleteGemini}
-            onToggle={(index, enabled) => void setConfigEnabled('gemini', index, enabled)}
-          />
-        </div>
-
-        <div id="provider-codex">
-          <CodexSection
-            configs={codexConfigs}
-            usageByProvider={usageByProvider}
-            loading={loading}
-            disableControls={disableControls}
-            isSwitching={isSwitching}
-            onAdd={() => openEditor('/ai-providers/codex/new')}
-            onEdit={(index) => openEditor(`/ai-providers/codex/${index}`)}
-            onDelete={(index) => void deleteProviderEntry('codex', index)}
-            onToggle={(index, enabled) => void setConfigEnabled('codex', index, enabled)}
-          />
-        </div>
-
-        <div id="provider-claude">
-          <ClaudeSection
-            configs={claudeConfigs}
-            usageByProvider={usageByProvider}
-            loading={loading}
-            disableControls={disableControls}
-            isSwitching={isSwitching}
-            onAdd={() => openEditor('/ai-providers/claude/new')}
-            onEdit={(index) => openEditor(`/ai-providers/claude/${index}`)}
-            onDelete={(index) => void deleteProviderEntry('claude', index)}
-            onToggle={(index, enabled) => void setConfigEnabled('claude', index, enabled)}
-          />
-        </div>
-
-        <div id="provider-vertex">
-          <VertexSection
-            configs={vertexConfigs}
-            usageByProvider={usageByProvider}
-            loading={loading}
-            disableControls={disableControls}
-            isSwitching={isSwitching}
-            onAdd={() => openEditor('/ai-providers/vertex/new')}
-            onEdit={(index) => openEditor(`/ai-providers/vertex/${index}`)}
-            onDelete={deleteVertex}
-            onToggle={(index, enabled) => void setConfigEnabled('vertex', index, enabled)}
-          />
-        </div>
-
-        <div id="provider-ampcode">
-          <AmpcodeSection
-            config={config?.ampcode}
-            loading={loading}
-            disableControls={disableControls}
-            isSwitching={isSwitching}
-            onEdit={() => openEditor('/ai-providers/ampcode')}
-          />
-        </div>
-
-        <div id="provider-openai">
-          <OpenAISection
-            configs={openaiProviders}
-            usageByProvider={usageByProvider}
-            loading={loading}
-            disableControls={disableControls}
-            isSwitching={isSwitching}
+        <div>
+          <ProviderToolbar
+            kind={kindFilter}
+            kindCounts={kindCounts}
+            onKindChange={setKindFilter}
+            searchText={searchText}
+            onSearchTextChange={setSearchText}
+            allModelNames={allModelNames}
+            selectedModels={selectedModels}
+            onSelectedModelsChange={setSelectedModels}
+            sortOption={sortOption}
+            onSortOptionChange={setSortOption}
+            sortDirection={sortDirection}
+            onSortDirectionChange={setSortDirection}
+            disabled={actionsDisabled}
             resolvedTheme={resolvedTheme}
-            onAdd={() => openEditor('/ai-providers/openai/new')}
-            onEdit={(index) => openEditor(`/ai-providers/openai/${index}`)}
-            onDelete={deleteOpenai}
-            onToggle={(index, enabled) => void setOpenAIProviderEnabled(index, enabled)}
+            onAdd={handleAdd}
           />
+
+          <Card>
+            <ProviderTable
+              rows={pagedRows}
+              loading={loading}
+              actionsDisabled={actionsDisabled}
+              toggleDisabled={actionsDisabled}
+              resolvedTheme={resolvedTheme}
+              emptyState={emptyState}
+              onShowDetail={(row) => setDetailRowKey(row.key)}
+              onEdit={handleRowEdit}
+              onDelete={handleRowDelete}
+              onToggle={handleRowToggle}
+            />
+            {visibleRows.length > 0 &&
+              (visibleRows.length > PROVIDER_TABLE_DEFAULT_PAGE_SIZE ||
+                pageSize !== PROVIDER_TABLE_DEFAULT_PAGE_SIZE) && (
+              <div className={styles.paginationBar}>
+                <div className={styles.paginationInfo}>
+                  {t('monitoring.pagination_info', {
+                    current: currentPage,
+                    total: totalPages,
+                    start: pageStartItem,
+                    end: pageEndItem,
+                    count: visibleRows.length,
+                  })}
+                </div>
+                <div className={styles.paginationControls}>
+                  <div className={styles.pageSizeField}>
+                    <span>{t('monitoring.page_size_label')}</span>
+                    <Select
+                      value={String(pageSize)}
+                      options={PROVIDER_TABLE_PAGE_SIZE_OPTIONS.map((size) => ({
+                        value: String(size),
+                        label: t('monitoring.page_size_option', { count: size }),
+                      }))}
+                      onChange={handlePageSizeChange}
+                      disabled={loading}
+                      fullWidth={false}
+                      ariaLabel={t('monitoring.page_size_label')}
+                      className={styles.pageSizeSelect}
+                      triggerClassName={styles.pageSizeSelectTrigger}
+                    />
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="xs"
+                    onClick={() => setPage(Math.max(1, currentPage - 1))}
+                    disabled={loading || currentPage <= 1}
+                  >
+                    {t('monitoring.pagination_prev')}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="xs"
+                    onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+                    disabled={loading || currentPage >= totalPages}
+                  >
+                    {t('monitoring.pagination_next')}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </Card>
         </div>
+
+        <AmpcodeSection
+          config={config?.ampcode}
+          loading={loading}
+          disableControls={disableControls}
+          isSwitching={isSwitching}
+          onEdit={() => openEditor('/ai-providers/ampcode')}
+        />
       </div>
 
-      <ProviderNav />
+      <ProviderDetailDrawer
+        row={detailRow}
+        open={detailRowKey !== null}
+        usageByProvider={usageByProvider}
+        resolvedTheme={resolvedTheme}
+        actionsDisabled={actionsDisabled}
+        toggleDisabled={actionsDisabled}
+        onClose={() => setDetailRowKey(null)}
+        onEdit={handleRowEdit}
+        onDelete={handleRowDelete}
+        onToggle={handleRowToggle}
+        onToggleWebsockets={handleRowWebsocketsToggle}
+        onToggleCloak={handleRowCloakToggle}
+      />
     </div>
   );
 }
