@@ -229,6 +229,58 @@ func TestServerCompatInfoIgnoresStaleUninitializedBootstrapState(t *testing.T) {
 	}
 }
 
+func TestServerCompatAutomationSettingsPatchReloadsRuntime(t *testing.T) {
+	cfg := testutil.NewConfig(t)
+	db := testutil.NewStore(t, cfg)
+	manager := collector.NewManager(cfg, db)
+	runtime := &recordingAutomationRuntimeService{}
+	handler := New(cfg, db, manager, runtime).Handler()
+
+	body := `{"quotaCooldownEnabled":true,"accountActionsEnabled":true,"accountActionsAutoDisable":true}`
+	rr := testutil.Request(t, handler, http.MethodPatch, "/usage-service/automation", body, testutil.AdminKey)
+	testutil.RequireStatus(t, rr, http.StatusOK)
+	if runtime.reloadCount != 1 {
+		t.Fatalf("reloadCount = %d, want 1", runtime.reloadCount)
+	}
+	var response struct {
+		QuotaCooldown struct {
+			Enabled bool   `json:"enabled"`
+			Source  string `json:"source"`
+		} `json:"quotaCooldown"`
+		AccountActionsAutoDisable struct {
+			Enabled    bool   `json:"enabled"`
+			Configured bool   `json:"configured"`
+			Source     string `json:"source"`
+		} `json:"accountActionsAutoDisable"`
+	}
+	testutil.DecodeJSON(t, rr, &response)
+	if !response.QuotaCooldown.Enabled || response.QuotaCooldown.Source != "database" {
+		t.Fatalf("quotaCooldown response = %#v", response.QuotaCooldown)
+	}
+	if !response.AccountActionsAutoDisable.Enabled || !response.AccountActionsAutoDisable.Configured || response.AccountActionsAutoDisable.Source != "database" {
+		t.Fatalf("auto-disable response = %#v", response.AccountActionsAutoDisable)
+	}
+
+	getRR := testutil.Request(t, handler, http.MethodGet, "/usage-service/automation", "", testutil.AdminKey)
+	testutil.RequireStatus(t, getRR, http.StatusOK)
+	if !strings.Contains(getRR.Body.String(), `"source":"database"`) {
+		t.Fatalf("expected persisted database source, body = %s", getRR.Body.String())
+	}
+}
+
+func TestServerCompatAutomationSettingsPatchRejectsEnvLockedField(t *testing.T) {
+	cfg := testutil.NewConfig(t)
+	cfg.QuotaCooldownEnvSet = true
+	db := testutil.NewStore(t, cfg)
+	handler := New(cfg, db, collector.NewManager(cfg, db)).Handler()
+
+	rr := testutil.Request(t, handler, http.MethodPatch, "/usage-service/automation", `{"quotaCooldownEnabled":true}`, testutil.AdminKey)
+	testutil.RequireStatus(t, rr, http.StatusConflict)
+	if !strings.Contains(rr.Body.String(), `"code":"automation_setting_env_locked"`) {
+		t.Fatalf("expected env locked error code, body = %s", rr.Body.String())
+	}
+}
+
 func TestServerCompatCPAPanelKeyCannotUseManagerOnlyRoutes(t *testing.T) {
 	cpa := testutil.NewCPAMock(t)
 	cfg := testutil.NewConfig(t)
@@ -743,6 +795,15 @@ func TestServerCompatPluginProxyRoutes(t *testing.T) {
 		authorization:     "Bearer management-key",
 		codexInviteOrigin: upstream.URL,
 	})
+}
+
+type recordingAutomationRuntimeService struct {
+	reloadCount int
+}
+
+func (s *recordingAutomationRuntimeService) Reload(context.Context) error {
+	s.reloadCount++
+	return nil
 }
 
 func compatEvent(hash string, offset int64) usage.Event {

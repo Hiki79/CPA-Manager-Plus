@@ -1,9 +1,12 @@
 package automation
 
 import (
+	"context"
+	"strings"
 	"testing"
 
 	"github.com/seakee/cpa-manager-plus/apps/manager-server/internal/config"
+	"github.com/seakee/cpa-manager-plus/apps/manager-server/internal/store"
 )
 
 func TestStatusExposesEffectiveFlagsAndKeys(t *testing.T) {
@@ -64,6 +67,50 @@ func TestStatusAutoDisableReportsEffectiveValue(t *testing.T) {
 	}).Status()
 	if !status.AccountActionsAutoDisable.Enabled {
 		t.Fatalf("accountActionsAutoDisable should be effective when accountActions is enabled, got %#v", status.AccountActionsAutoDisable)
+	}
+}
+
+func TestStatusUsesDBSettingsUnlessEnvLocked(t *testing.T) {
+	st, err := store.Open(t.TempDir() + "/usage.sqlite")
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+
+	if err := st.SaveAutomationSettings(ctx, store.AutomationSettings{
+		QuotaCooldownEnabled:      boolPtr(true),
+		AccountActionsEnabled:     boolPtr(false),
+		AccountActionsAutoDisable: boolPtr(true),
+	}); err != nil {
+		t.Fatalf("save automation settings: %v", err)
+	}
+	status := New(config.Config{}, st).Status(ctx)
+	if !status.QuotaCooldown.Enabled || status.QuotaCooldown.Source != SourceDB || status.QuotaCooldown.Locked {
+		t.Fatalf("quotaCooldown = %#v", status.QuotaCooldown)
+	}
+	if status.AccountActions.Enabled || status.AccountActions.Source != SourceDB {
+		t.Fatalf("accountActions = %#v", status.AccountActions)
+	}
+	if status.AccountActionsAutoDisable.Enabled || !status.AccountActionsAutoDisable.Configured || status.AccountActionsAutoDisable.Source != SourceDB {
+		t.Fatalf("accountActionsAutoDisable = %#v", status.AccountActionsAutoDisable)
+	}
+
+	status = New(config.Config{QuotaCooldownEnabled: false, QuotaCooldownEnvSet: true}, st).Status(ctx)
+	if status.QuotaCooldown.Enabled || !status.QuotaCooldown.Locked || status.QuotaCooldown.Source != SourceEnv {
+		t.Fatalf("env locked quotaCooldown = %#v", status.QuotaCooldown)
+	}
+}
+
+func TestUpdateRejectsEnvLockedFields(t *testing.T) {
+	st, err := store.Open(t.TempDir() + "/usage.sqlite")
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer st.Close()
+	_, err = New(config.Config{AccountActionsEnvSet: true}, st).Update(context.Background(), UpdateRequest{AccountActionsEnabled: boolPtr(true)})
+	if err == nil || !strings.Contains(err.Error(), "locked by environment variable") {
+		t.Fatalf("Update err = %v", err)
 	}
 }
 

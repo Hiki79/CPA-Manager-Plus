@@ -3,12 +3,23 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { IconRefreshCw } from '@/components/ui/icons';
+import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { usePanelFeatureAvailability } from '@/hooks/usePanelFeatureAvailability';
-import { usageServiceApi, type AutomationStatus } from '@/services/api/usageService';
+import {
+  usageServiceApi,
+  type AutomationSettingsPatch,
+  type AutomationStatus,
+} from '@/services/api/usageService';
 import { useAuthStore, useNotificationStore } from '@/stores';
 import styles from './AutomationStatusSection.module.scss';
 
 type CapabilityKey = 'quotaCooldown' | 'accountActions' | 'accountActionsAutoDisable';
+
+const patchKeyByCapability: Record<CapabilityKey, keyof AutomationSettingsPatch> = {
+  quotaCooldown: 'quotaCooldownEnabled',
+  accountActions: 'accountActionsEnabled',
+  accountActionsAutoDisable: 'accountActionsAutoDisable',
+};
 
 export function AutomationStatusSection() {
   const { t } = useTranslation();
@@ -20,6 +31,7 @@ export function AutomationStatusSection() {
 
   const [status, setStatus] = useState<AutomationStatus | null>(null);
   const [loading, setLoading] = useState(false);
+  const [savingKey, setSavingKey] = useState<CapabilityKey | null>(null);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
@@ -45,13 +57,60 @@ export function AutomationStatusSection() {
     void load();
   }, [load]);
 
+  const updateCapability = useCallback(
+    async (key: CapabilityKey, value: boolean) => {
+      if (!managerServiceBase || !managementKey) return;
+      if (key === 'accountActionsAutoDisable' && value) {
+        const confirmed = window.confirm(
+          t('automation.accountActionsAutoDisable_confirm', {
+            defaultValue:
+              'Enable auth issue auto-disable? It only disables matching auth files, never deletes them, never auto-recovers them, and still requires manual handling.',
+          })
+        );
+        if (!confirmed) return;
+      }
+      setSavingKey(key);
+      setError('');
+      try {
+        const patch: AutomationSettingsPatch = { [patchKeyByCapability[key]]: value };
+        const data = await usageServiceApi.updateAutomationSettings(
+          managerServiceBase,
+          managementKey,
+          patch
+        );
+        setStatus(data);
+        showNotification(
+          t('automation.save_success', { defaultValue: 'Automation settings updated.' }),
+          'success'
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err || 'request failed');
+        setError(message);
+        showNotification(
+          t('automation.save_failed', { message, defaultValue: `Save failed: ${message}` }),
+          'error'
+        );
+      } finally {
+        setSavingKey(null);
+      }
+    },
+    [managerServiceBase, managementKey, showNotification, t]
+  );
+
   const renderCapabilityCard = (key: CapabilityKey) => {
     const capability = status?.[key];
     if (!capability) return null;
     const enabled = Boolean(capability.enabled);
+    const configured = capability.configured ?? capability.enabled;
+    const locked = Boolean(capability.locked);
     const dependencyUnmet = Boolean(
       key === 'accountActionsAutoDisable' && status && !status.accountActions.enabled
     );
+    const toggleDisabled =
+      loading ||
+      savingKey !== null ||
+      locked ||
+      (key === 'accountActionsAutoDisable' && dependencyUnmet && !configured);
 
     return (
       <section className={styles.card} key={key}>
@@ -69,6 +128,27 @@ export function AutomationStatusSection() {
           </div>
           <p className={styles.cardDescription}>{t(`automation.${key}_description`)}</p>
         </header>
+
+        <div className={styles.controlRow}>
+          <ToggleSwitch
+            checked={Boolean(configured)}
+            onChange={(value) => void updateCapability(key, value)}
+            disabled={toggleDisabled}
+            ariaLabel={t(`automation.${key}_title`)}
+          />
+          <div className={styles.controlCopy}>
+            <strong>
+              {locked
+                ? t('automation.locked_by_env', { defaultValue: 'Locked by environment' })
+                : t('automation.runtime_editable', { defaultValue: 'Runtime editable' })}
+            </strong>
+            <span>
+              {t(`automation.source_${capability.source || 'startup'}`, {
+                defaultValue: capability.source || 'startup',
+              })}
+            </span>
+          </div>
+        </div>
 
         <dl className={styles.metaList}>
           <div className={styles.metaRow}>
@@ -98,7 +178,9 @@ export function AutomationStatusSection() {
 
         {dependencyUnmet ? (
           <p className={styles.dependencyNote}>
-            {t('automation.accountActionsAutoDisable_dependency_note')}
+            {configured
+              ? t('automation.accountActionsAutoDisable_configured_dependency_note')
+              : t('automation.accountActionsAutoDisable_dependency_note')}
           </p>
         ) : null}
 
@@ -126,12 +208,11 @@ export function AutomationStatusSection() {
           </h3>
           <p className={styles.sectionHint}>
             {t('automation.section_hint', {
-              defaultValue:
-                'Effective automation switches for this Manager Server. Read-only here.',
+              defaultValue: 'Runtime automation switches for this Manager Server.',
             })}
           </p>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
+        <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading || savingKey !== null}>
           <IconRefreshCw size={14} />
           {t('automation.refresh', { defaultValue: 'Refresh' })}
         </Button>
@@ -140,9 +221,9 @@ export function AutomationStatusSection() {
       <div className={styles.restartNote}>
         <IconRefreshCw size={14} className={styles.restartIcon} />
         <span>
-          {t('automation.restart_required_note', {
+          {t('automation.runtime_note', {
             defaultValue:
-              'These switches take effect at startup. Change them via environment variables or config.json and restart the service to apply.',
+              'Unlocked switches are saved to this Manager Server and take effect without restarting. Environment variables still lock their matching switches.',
           })}
         </span>
       </div>

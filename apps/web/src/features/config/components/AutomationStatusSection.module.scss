@@ -113,6 +113,32 @@
   line-height: 1.6;
 }
 
+.controlRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 18%, var(--border-color));
+  background: color-mix(in srgb, var(--primary-color) 5%, transparent);
+}
+
+.controlCopy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.controlCopy strong {
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.controlCopy span {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
 .metaList {
   display: grid;
   gap: 4px;

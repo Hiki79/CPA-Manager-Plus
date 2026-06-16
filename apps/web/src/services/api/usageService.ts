@@ -70,6 +70,9 @@ export interface UsageServiceStatus {
 
 export interface AutomationCapability {
   enabled: boolean;
+  configured?: boolean;
+  source?: string;
+  locked?: boolean;
   envKey: string;
   configFileKey: string;
   dependsOn?: string;
@@ -77,9 +80,16 @@ export interface AutomationCapability {
 
 export interface AutomationStatus {
   source: string;
+  updatedAtMs?: number;
   quotaCooldown: AutomationCapability;
   accountActions: AutomationCapability;
   accountActionsAutoDisable: AutomationCapability;
+}
+
+export interface AutomationSettingsPatch {
+  quotaCooldownEnabled?: boolean;
+  accountActionsEnabled?: boolean;
+  accountActionsAutoDisable?: boolean;
 }
 
 export interface UsageServiceSetupRequest {
@@ -1096,6 +1106,23 @@ export const usageServiceApi = {
     });
   },
 
+  updateAutomationSettings: async (
+    base: string,
+    managementKey: string,
+    patch: AutomationSettingsPatch
+  ): Promise<AutomationStatus> => {
+    return withUsageServiceError(async () => {
+      const response = await axios.patch<AutomationStatus>(
+        buildUrl(base, '/usage-service/automation'),
+        patch,
+        {
+          timeout: USAGE_SERVICE_TIMEOUT_MS,
+          headers: authHeaders(managementKey),
+        }
+      );
+      return response.data;
+    });
+  },
 
   getUsage: async (base: string, managementKey?: string): Promise<UsagePayload> => {
     return withUsageServiceError(async () => {
