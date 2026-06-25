@@ -117,6 +117,7 @@ import {
   buildUsageHeaderSnapshotLookup,
   getHighConfidenceUsageHeaderSnapshotForAuthFile,
 } from '@/utils/usageHeaderSnapshots';
+import { buildSourceInfoMap, buildSourceProviderStateMap } from '@/utils/sourceResolver';
 import styles from './MonitoringCenterPage.module.scss';
 
 export { AccountExpandedDetails, AccountOverviewCard };
@@ -609,6 +610,19 @@ export function MonitoringCenterPage() {
   const statusOptions = useMemo(() => buildStatusOptions(t), [t]);
 
   const authFilesByAuthIndex = useMemo(() => buildAuthFilesByAuthIndex(authFiles), [authFiles]);
+  const accountSourceProviderStateBySourceKey = useMemo(
+    () =>
+      buildSourceProviderStateMap(
+        buildSourceInfoMap({
+          geminiApiKeys: config?.geminiApiKeys || [],
+          claudeApiKeys: config?.claudeApiKeys || [],
+          codexApiKeys: config?.codexApiKeys || [],
+          vertexApiKeys: config?.vertexApiKeys || [],
+          openaiCompatibility: config?.openaiCompatibility || [],
+        })
+      ),
+    [config]
+  );
 
   const scopedRows = filteredRows;
   const scopedStatsRows = useMemo(
@@ -637,8 +651,13 @@ export function MonitoringCenterPage() {
     return resolvedBounds ? buildEmptyMonitoringStatusData(resolvedBounds) : EMPTY_STATUS_BAR_DATA;
   }, [accountStatusBounds, scopedRows]);
   const accountAuthStateByRowId = useMemo(
-    () => buildMonitoringAccountAuthStateMap(accountRows, authFilesByAuthIndex),
-    [accountRows, authFilesByAuthIndex]
+    () =>
+      buildMonitoringAccountAuthStateMap(
+        accountRows,
+        authFilesByAuthIndex,
+        accountSourceProviderStateBySourceKey
+      ),
+    [accountRows, accountSourceProviderStateBySourceKey, authFilesByAuthIndex]
   );
   const sortedAccountRows = useMemo(
     () => sortAccountRows(accountRows, accountSort),

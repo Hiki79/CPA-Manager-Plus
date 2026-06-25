@@ -15,7 +15,11 @@ import type {
   MonitoringAnalyticsTimelinePoint,
 } from '@/services/api/usageService';
 import type { CredentialInfo } from '@/types/sourceInfo';
-import { buildSourceInfoMap, resolveSourceDisplay } from '@/utils/sourceResolver';
+import {
+  buildSourceInfoMap,
+  resolveSourceDisplay,
+  resolveSourceIdentityKey,
+} from '@/utils/sourceResolver';
 import { normalizeAuthIndex, type UsageDetailWithEndpoint } from '@/utils/usage';
 import {
   formatApiKeyHashLabel,
@@ -59,6 +63,34 @@ const uniqueReadableValues = (values: Array<string | null | undefined> = []) =>
 
 const firstReadableValue = (...values: Array<string | null | undefined>) =>
   values.map(readString).find((value) => value && value !== '-') || '';
+
+const buildSourceKeysFromAnalyticsIdentity = (
+  authIndices: Array<string | null | undefined> | undefined,
+  sources: Array<string | null | undefined> | undefined,
+  sourceInfoMap: ReturnType<typeof buildSourceInfoMap>,
+  authFileMap: Map<string, CredentialInfo>
+) => {
+  const keys = new Set<string>();
+  const normalizedAuthIndices = uniqueReadableValues(authIndices);
+  const normalizedSources = uniqueReadableValues(sources);
+
+  normalizedAuthIndices.forEach((authIndex) => {
+    const key = resolveSourceIdentityKey('', authIndex, sourceInfoMap, authFileMap);
+    if (key) keys.add(key);
+  });
+
+  normalizedSources.forEach((source) => {
+    const sourceOnlyKey = resolveSourceIdentityKey(source, '', sourceInfoMap, authFileMap);
+    if (sourceOnlyKey) keys.add(sourceOnlyKey);
+
+    normalizedAuthIndices.forEach((authIndex) => {
+      const key = resolveSourceIdentityKey(source, authIndex, sourceInfoMap, authFileMap);
+      if (key) keys.add(key);
+    });
+  });
+
+  return Array.from(keys).filter((key) => key && key !== 'source:-').sort();
+};
 
 const normalizeFilterText = (value: string | null | undefined) =>
   readString(value).trim().toLowerCase();
@@ -583,6 +615,12 @@ export const buildAccountRowsFromAnalytics = (
         display.sourceLabel,
       ]);
       const channels = uniqueReadableValues([...channelNames, display.channel]);
+      const sourceKeys = buildSourceKeysFromAnalyticsIdentity(
+        row.auth_indices,
+        row.sources,
+        sourceInfoMap,
+        authFileMap
+      );
 
       return {
         id: account || row.id,
@@ -591,6 +629,7 @@ export const buildAccountRowsFromAnalytics = (
         accountMasked: display.accountMasked || maskEmailLike(account),
         authLabels,
         authIndices: uniqueReadableValues(row.auth_indices),
+        sourceKeys,
         channels,
         totalCalls: row.calls,
         successCalls: row.success_calls,

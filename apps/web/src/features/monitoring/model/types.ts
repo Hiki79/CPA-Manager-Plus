@@ -246,6 +246,7 @@ export type MonitoringAccountRow = {
   accountMasked: string;
   authLabels: string[];
   authIndices: string[];
+  sourceKeys?: string[];
   channels: string[];
   totalCalls: number;
   successCalls: number;
