@@ -500,6 +500,11 @@ const resolveClaudeLimitResetAt = (limit: Record<string, unknown>): string => {
   return typeof rawResetAt === 'string' ? rawResetAt.trim() : '';
 };
 
+const resolveClaudeLimitResetRank = (limit: Record<string, unknown>): number => {
+  const resetTimestamp = Date.parse(resolveClaudeLimitResetAt(limit));
+  return Number.isFinite(resetTimestamp) ? resetTimestamp : -1;
+};
+
 const parseClaudeLimitWindowValues = (
   limit: Record<string, unknown>
 ): ClaudeLimitWindowValues | null => {
@@ -560,20 +565,44 @@ const shouldReplaceClaudeScopedWindow = (
   existing: ClaudeScopedWeeklyWindowEntry,
   candidate: ClaudeScopedWeeklyWindowEntry
 ): boolean => {
+  if (candidate.resetAtRank !== existing.resetAtRank) {
+    return candidate.resetAtRank > existing.resetAtRank;
+  }
   if (candidate.activityRank !== existing.activityRank) {
     return candidate.activityRank > existing.activityRank;
   }
-  if (candidate.usedPercentRank !== existing.usedPercentRank) {
-    return candidate.usedPercentRank > existing.usedPercentRank;
+  return candidate.usedPercentRank > existing.usedPercentRank;
+};
+
+type ClaudeBaseLimitCandidate = {
+  completenessRank: number;
+  kindRank: number;
+  resetAtRank: number;
+  usedPercentRank: number;
+  values: ClaudeLimitWindowValues;
+};
+
+const shouldReplaceClaudeBaseLimit = (
+  existing: ClaudeBaseLimitCandidate,
+  candidate: ClaudeBaseLimitCandidate
+): boolean => {
+  if (candidate.resetAtRank !== existing.resetAtRank) {
+    return candidate.resetAtRank > existing.resetAtRank;
   }
-  return candidate.resetAtRank > existing.resetAtRank;
+  if (candidate.completenessRank !== existing.completenessRank) {
+    return candidate.completenessRank > existing.completenessRank;
+  }
+  if (candidate.kindRank !== existing.kindRank) {
+    return candidate.kindRank > existing.kindRank;
+  }
+  return candidate.usedPercentRank > existing.usedPercentRank;
 };
 
 const buildClaudeBaseLimitFallbacks = (
   payload: ClaudeUsagePayload
 ): Map<ClaudeBaseLimitWindowId, ClaudeLimitWindowValues> => {
-  const fallbacks = new Map<ClaudeBaseLimitWindowId, ClaudeLimitWindowValues>();
-  if (!Array.isArray(payload.limits)) return fallbacks;
+  const candidates = new Map<ClaudeBaseLimitWindowId, ClaudeBaseLimitCandidate>();
+  if (!Array.isArray(payload.limits)) return new Map();
 
   for (const rawLimit of payload.limits) {
     try {
@@ -582,22 +611,37 @@ const buildClaudeBaseLimitFallbacks = (
       if (rawLimit.scope !== undefined && rawLimit.scope !== null) continue;
 
       const windowId = resolveClaudeBaseLimitWindowId(rawLimit);
-      if (!windowId || fallbacks.has(windowId)) continue;
+      if (!windowId) continue;
       const values = parseClaudeLimitWindowValues(rawLimit);
       if (!values) continue;
-      fallbacks.set(windowId, values);
+      const kind = normalizeClaudeLimitToken(rawLimit.kind);
+      const candidate: ClaudeBaseLimitCandidate = {
+        completenessRank:
+          (values.usedPercent !== null ? 1 : 0) + (values.resetLabel !== '-' ? 1 : 0),
+        kindRank: windowId === 'seven-day' && kind === 'weekly_all' ? 1 : 0,
+        resetAtRank: resolveClaudeLimitResetRank(rawLimit),
+        usedPercentRank: values.usedPercent ?? -1,
+        values,
+      };
+      const existing = candidates.get(windowId);
+      if (existing && !shouldReplaceClaudeBaseLimit(existing, candidate)) continue;
+      candidates.set(windowId, candidate);
     } catch {
       continue;
     }
   }
 
-  return fallbacks;
+  return new Map(
+    [...candidates.entries()].map(([windowId, candidate]) => [windowId, candidate.values])
+  );
 };
 
 const buildClaudeScopedWeeklyWindows = (payload: ClaudeUsagePayload): ClaudeQuotaWindow[] => {
   if (!Array.isArray(payload.limits)) return [];
 
-  const windowsByModel = new Map<string, ClaudeScopedWeeklyWindowEntry>();
+  const idWindowsByModel = new Map<string, ClaudeScopedWeeklyWindowEntry>();
+  const labelOnlyWindowsByModel = new Map<string, ClaudeScopedWeeklyWindowEntry>();
+  const idKeysByLabel = new Map<string, Set<string>>();
   for (const rawLimit of payload.limits) {
     try {
       if (!isRecord(rawLimit) || !isClaudeWeeklyScopedLimit(rawLimit)) continue;
@@ -620,7 +664,6 @@ const buildClaudeScopedWeeklyWindows = (payload: ClaudeUsagePayload): ClaudeQuot
       const identityKey = modelId ? `id:${modelId}` : `label:${labelKey}`;
       const activeFlag = normalizeFlagValue(rawLimit.is_active ?? rawLimit.isActive);
       const activityRank = activeFlag === true ? 2 : activeFlag === undefined ? 1 : 0;
-      const resetTimestamp = Date.parse(resolveClaudeLimitResetAt(rawLimit));
 
       const idPart = modelId
         ? `id-${encodeClaudeWindowIdPart(modelId)}`
@@ -628,7 +671,7 @@ const buildClaudeScopedWeeklyWindows = (payload: ClaudeUsagePayload): ClaudeQuot
       const candidate: ClaudeScopedWeeklyWindowEntry = {
         activityRank,
         identityKey,
-        resetAtRank: Number.isFinite(resetTimestamp) ? resetTimestamp : -1,
+        resetAtRank: resolveClaudeLimitResetRank(rawLimit),
         sortLabel: labelKey,
         usedPercentRank: values.usedPercent ?? -1,
         window: {
@@ -637,15 +680,41 @@ const buildClaudeScopedWeeklyWindows = (payload: ClaudeUsagePayload): ClaudeQuot
           ...values,
         },
       };
-      const existing = windowsByModel.get(identityKey);
+      const targetMap = modelId ? idWindowsByModel : labelOnlyWindowsByModel;
+      if (modelId) {
+        const idKeys = idKeysByLabel.get(labelKey) ?? new Set<string>();
+        idKeys.add(identityKey);
+        idKeysByLabel.set(labelKey, idKeys);
+      }
+      const existing = targetMap.get(identityKey);
       if (existing && !shouldReplaceClaudeScopedWindow(existing, candidate)) continue;
-      windowsByModel.set(identityKey, candidate);
+      targetMap.set(identityKey, candidate);
     } catch {
       continue;
     }
   }
 
-  return [...windowsByModel.values()]
+  for (const labelEntry of labelOnlyWindowsByModel.values()) {
+    const matchingIdKeys = idKeysByLabel.get(labelEntry.sortLabel);
+    if (matchingIdKeys?.size !== 1) continue;
+    const identityKey = matchingIdKeys.values().next().value;
+    if (!identityKey) continue;
+    const idEntry = idWindowsByModel.get(identityKey);
+    if (!idEntry) continue;
+    if (shouldReplaceClaudeScopedWindow(idEntry, labelEntry)) {
+      idWindowsByModel.set(identityKey, {
+        ...labelEntry,
+        identityKey,
+        window: {
+          ...labelEntry.window,
+          id: idEntry.window.id,
+        },
+      });
+    }
+    labelOnlyWindowsByModel.delete(labelEntry.identityKey);
+  }
+
+  return [...idWindowsByModel.values(), ...labelOnlyWindowsByModel.values()]
     .sort((left, right) => {
       if (left.sortLabel !== right.sortLabel) {
         return left.sortLabel < right.sortLabel ? -1 : 1;
