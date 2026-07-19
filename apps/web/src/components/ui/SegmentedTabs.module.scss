@@ -83,3 +83,35 @@
   cursor: not-allowed;
   transform: none;
 }
+
+.root {
+  gap: 0;
+  padding: 0;
+  background: var(--neo-white, var(--bg-primary));
+  border: 2px solid var(--neo-ink, var(--border-color));
+  border-radius: 0;
+  box-shadow: 2px 2px 0 var(--neo-ink, #111);
+}
+
+.item {
+  min-height: 38px;
+  border-right: 2px solid var(--neo-ink, var(--border-color));
+  border-radius: 0;
+  font-weight: 850;
+
+  &:last-child {
+    border-right: 0;
+  }
+
+  &:hover:not(.disabled) {
+    color: #111;
+    background: var(--neo-cyan, #56d7f2);
+  }
+}
+
+.active,
+.active:hover:not(.disabled) {
+  color: #111;
+  background: var(--neo-yellow, #ffd440);
+  box-shadow: none;
+}

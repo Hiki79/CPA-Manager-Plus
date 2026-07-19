@@ -817,3 +817,73 @@
     padding: 0;
   }
 }
+
+// Neo-Brutalism visual overrides
+.pageMeta {
+  padding: 10px;
+  border: 2px solid var(--neo-ink, var(--border-color));
+  border-radius: 0;
+  background: var(--neo-white, var(--bg-primary));
+  box-shadow: var(--neo-shadow, 4px 4px 0 #111);
+}
+
+.statusBadge {
+  color: #111;
+  background: var(--neo-mint, #8bddb8);
+  border: 2px solid var(--neo-ink, #111);
+  border-radius: 0;
+  box-shadow: 2px 2px 0 var(--neo-ink, #111);
+  font-family: $font-mono;
+
+  &::before {
+    border-radius: 0;
+  }
+}
+
+.managerConfigPanel,
+.managerSection,
+.sourceToolbar,
+.editorWrapper {
+  border: 2px solid var(--neo-ink, var(--border-color));
+  border-radius: 0;
+  background: var(--neo-white, var(--bg-primary));
+  box-shadow: var(--neo-shadow-small, 2px 2px 0 #111);
+}
+
+.managerRuntimeBadge,
+.managerKeyBindingBadge,
+.managerReadonlyGrid > div,
+.managerDependencyNote,
+.managerQueueNote,
+.managerStatusNote,
+.managerConnectionRiskNote,
+.managerKeySavingHint,
+.searchCount,
+.searchButton,
+.searchActions button {
+  border-radius: 0;
+}
+
+.searchInput {
+  border-radius: 0 !important;
+}
+
+.floatingActionList {
+  background: var(--neo-white, var(--glass-bg));
+  border: 2px solid var(--neo-ink, var(--glass-border));
+  border-radius: 0;
+  box-shadow: var(--neo-shadow, 4px 4px 0 #111);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.floatingStatus,
+.floatingActionButton {
+  border-radius: 0;
+}
+
+.floatingActionButton:hover:not(:disabled) {
+  color: #111;
+  background: var(--neo-yellow, #ffd440);
+  transform: translate(-1px, -1px);
+}

@@ -8,68 +8,65 @@
   pointer-events: none;
   background-color: var(--app-bg);
   background-image: var(--app-bg-gradient);
+  background-size: 32px 32px;
 }
 
-.app-background__shape {
+.app-background__pixel {
   position: absolute;
-  filter: blur(var(--app-bg-blob-blur));
-  opacity: var(--app-bg-blob-1-opacity);
-  animation: app-float 20s infinite ease-in-out alternate;
+  width: 42px;
+  height: 42px;
+  border: 3px solid #111;
+  background:
+    linear-gradient(90deg, transparent 25%, #111 25% 38%, transparent 38% 63%, #111 63% 76%, transparent 76%),
+    linear-gradient(transparent 25%, rgb(255 255 255 / 0.7) 25% 38%, transparent 38% 63%, #111 63% 76%, transparent 76%),
+    var(--pixel-color);
+  box-shadow: 4px 4px 0 #111;
+  image-rendering: pixelated;
+  opacity: 0.32;
+  transform: rotate(var(--pixel-rotate));
 }
 
-.app-background__shape-1 {
-  top: -10%;
-  right: -10%;
-  width: 600px;
-  height: 600px;
-  opacity: var(--app-bg-blob-1-opacity);
+.app-background__pixel--cyan {
+  --pixel-color: #56d7f2;
+  --pixel-rotate: 8deg;
+  top: 14%;
+  right: 5%;
 }
 
-.app-background__shape-2 {
-  bottom: -10%;
-  left: -10%;
-  width: 500px;
-  height: 500px;
-  opacity: var(--app-bg-blob-2-opacity);
-  animation-delay: -5s;
+.app-background__pixel--pink {
+  --pixel-color: #ff78aa;
+  --pixel-rotate: -7deg;
+  bottom: 8%;
+  left: 4%;
 }
 
-@keyframes app-float {
-  0% {
-    transform: translate(0, 0) rotate(0deg);
-  }
-
-  50% {
-    transform: translate(30px, 20px) rotate(10deg);
-  }
-
-  100% {
-    transform: translate(0, 0) rotate(0deg);
-  }
+.app-background__pixel--purple {
+  --pixel-color: #a795ff;
+  --pixel-rotate: 5deg;
+  top: 52%;
+  left: 19%;
+  width: 30px;
+  height: 30px;
 }
 
-[data-visual-effects='reduced'] .app-background__shape {
+[data-theme='dark'] .app-background__pixel {
+  border-color: #f8f2e7;
+  box-shadow: 4px 4px 0 #ffd440;
+  opacity: 0.18;
+}
+
+[data-visual-effects='reduced'] .app-background__pixel {
   display: none;
-  filter: none;
-  animation: none;
 }
 
 @media (prefers-reduced-motion: reduce), (prefers-reduced-transparency: reduce) {
-  .app-background__shape {
+  .app-background__pixel {
     display: none;
-    filter: none;
-    animation: none;
   }
 }
 
 @media (max-width: 768px) {
-  .app-background__shape-1 {
-    width: 420px;
-    height: 420px;
-  }
-
-  .app-background__shape-2 {
-    width: 360px;
-    height: 360px;
+  .app-background__pixel {
+    opacity: 0.16;
   }
 }

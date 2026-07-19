@@ -204,3 +204,39 @@
   color: var(--text-tertiary);
   font-size: 12px;
 }
+
+.metricCard,
+.rankCard {
+  background: var(--neo-white, var(--glass-bg));
+  border: 2px solid var(--neo-ink, var(--glass-border));
+  border-radius: 0;
+  box-shadow: var(--neo-shadow-small, 2px 2px 0 #111);
+  backdrop-filter: none;
+
+  &:hover {
+    border-color: var(--neo-ink, #111);
+    box-shadow: var(--neo-shadow, 4px 4px 0 #111);
+    transform: translate(-2px, -2px);
+  }
+}
+
+.metricCard .metricHeader .metricIcon,
+.rankCard .rankItem .rankIndex,
+.rankCard .rankItem .rankInfo .rankTrack,
+.rankCard .rankItem .rankInfo .rankTrack .rankBar,
+.error,
+.empty {
+  border-radius: 0;
+}
+
+.metricCard .metricHeader .metricIcon {
+  color: #111;
+  background: var(--neo-yellow, #ffd440);
+  border: 2px solid var(--neo-ink, #111);
+  box-shadow: 2px 2px 0 var(--neo-ink, #111);
+}
+
+.metricCard .metricBody .metricValue {
+  font-family: 'Arial Black', 'Noto Sans SC', sans-serif;
+  font-weight: 900;
+}

@@ -65,7 +65,7 @@ const applyTheme = (resolved: AppliedTheme) => {
 export const useThemeStore = create<ThemeState>()(
   persist(
     (set, get) => ({
-      theme: 'auto',
+      theme: 'white',
       resolvedTheme: 'light',
 
       setTheme: (theme) => {
@@ -89,7 +89,7 @@ export const useThemeStore = create<ThemeState>()(
         const { theme, setTheme } = get();
 
         // 应用已保存的主题
-        setTheme(isTheme(theme) ? theme : 'auto');
+        setTheme(isTheme(theme) ? theme : 'white');
 
         // 监听系统主题变化（仅在 auto 模式下生效）
         if (!window.matchMedia) {

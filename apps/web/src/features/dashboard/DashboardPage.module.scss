@@ -105,6 +105,145 @@
   }
 }
 
+.dashboardTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: max-content;
+
+  > span {
+    display: inline-grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    color: #111;
+    background: var(--neo-yellow, #ffd440);
+    border: 2px solid var(--neo-ink, #111);
+    box-shadow: 2px 2px 0 var(--neo-ink, #111);
+    font-family: v.$font-mono;
+    font-size: 18px;
+    font-weight: 900;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(24px, 2.4vw, 38px);
+    line-height: 1;
+  }
+}
+
+:global([data-theme='dark']) .dashboardTitle > span {
+  color: #111;
+  border-color: #f8f2e7;
+  box-shadow: 2px 2px 0 #ffd440;
+}
+
+:global(.main-content) .header {
+  padding: 16px 20px;
+  background: var(--neo-white, var(--glass-bg));
+  border: 2px solid var(--neo-ink, var(--glass-border));
+  border-radius: 0;
+  box-shadow: var(--neo-shadow, 4px 4px 0 #111);
+  backdrop-filter: none;
+
+  .connectionStatus {
+    padding-left: 18px;
+    border-left: 2px solid var(--neo-ink, var(--app-border));
+
+    .statusDot {
+      border: 2px solid var(--neo-ink, #111);
+      border-radius: 0;
+      box-shadow: none;
+    }
+  }
+
+  .apiValue {
+    color: var(--text-primary);
+    font-family: v.$font-mono;
+    font-weight: 700;
+  }
+
+  .actionBtn {
+    color: #111;
+    background: var(--neo-yellow, #ffd440);
+    border: 2px solid var(--neo-ink, #111);
+    border-radius: 0;
+    box-shadow: 2px 2px 0 var(--neo-ink, #111);
+    font-weight: 800;
+
+    &:hover {
+      color: #111;
+      background: var(--neo-cyan, #56d7f2);
+      border-color: var(--neo-ink, #111);
+      box-shadow: 3px 3px 0 var(--neo-ink, #111);
+      transform: translate(-1px, -1px);
+    }
+  }
+}
+
+.metricsRow .sectionTitle {
+  display: inline-flex;
+  width: max-content;
+  margin-bottom: 18px;
+  padding: 7px 11px;
+  color: #111;
+  background: var(--neo-yellow, #ffd440);
+  border: 2px solid var(--neo-ink, #111);
+  box-shadow: 2px 2px 0 var(--neo-ink, #111);
+  font-size: 15px;
+  font-weight: 900;
+
+  &::before {
+    display: none;
+  }
+}
+
+.bottomSummaryRow {
+  .quickStatsPanel,
+  .configCard {
+    border: 2px solid var(--neo-ink, var(--glass-border));
+    border-radius: 0;
+    box-shadow: var(--neo-shadow, 4px 4px 0 #111);
+  }
+
+  .bentoGrid .bentoCard {
+    border-color: var(--neo-ink, var(--app-border));
+
+    &:hover {
+      color: #111;
+      background: var(--neo-cyan, #56d7f2);
+
+      .bentoValue,
+      .bentoLabel,
+      .bentoSublabel,
+      .bentoArrow {
+        color: #111;
+      }
+    }
+
+    .bentoIcon {
+      color: #111;
+      background: var(--neo-yellow, #ffd440);
+      border: 2px solid var(--neo-ink, #111);
+      border-radius: 0;
+      box-shadow: 2px 2px 0 var(--neo-ink, #111);
+    }
+
+    .bentoValue {
+      font-family: 'Arial Black', 'Noto Sans SC', sans-serif;
+      font-weight: 900;
+    }
+  }
+
+  .configCard .configGrid .configItem .configBadge {
+    color: #111;
+    background: var(--neo-mint, #8bddb8);
+    border: 1px solid var(--neo-ink, #111);
+    border-radius: 0;
+    font-family: v.$font-mono;
+  }
+}
+
 .overviewRow {
   display: grid;
   grid-template-columns: 1fr;
@@ -203,8 +342,8 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background: var(--app-accent-soft);
-        color: var(--color-primary);
+        color: #111;
+        background: var(--neo-yellow, var(--app-accent-soft));
         border-radius: 10px;
       }
 
@@ -339,6 +478,10 @@
     }
   }
 
+  .dashboardTitle {
+    width: 100%;
+  }
+
   .bottomSummaryRow {
     grid-template-columns: 1fr;
   }
@@ -359,6 +502,11 @@
     .apiBaseBlock .apiValue {
       max-width: 54vw;
     }
+  }
+
+  :global(.main-content) .header .connectionStatus {
+    padding-left: 0;
+    border-left: 0;
   }
 
   .dataRow {

@@ -438,6 +438,10 @@ export function DashboardPage() {
       {/* 1. Header Section */}
       <header className={styles.header}>
         <div className={styles.headerLeft}>
+          <div className={styles.dashboardTitle}>
+            <span aria-hidden="true">#</span>
+            <h1>{t('nav.dashboard')}</h1>
+          </div>
           <div className={styles.connectionStatus}>
             <span
               className={`${styles.statusDot} ${

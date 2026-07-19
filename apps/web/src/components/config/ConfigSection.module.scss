@@ -94,3 +94,19 @@
   max-width: 100%;
   box-sizing: border-box;
 }
+
+.section {
+  border-top: 2px solid var(--neo-ink, var(--border-color));
+}
+
+.iconBadge {
+  color: #111;
+  background: var(--neo-yellow, #ffd440);
+  border: 2px solid var(--neo-ink, #111);
+  border-radius: 0;
+  box-shadow: 2px 2px 0 var(--neo-ink, #111);
+}
+
+.title {
+  font-weight: 900;
+}
