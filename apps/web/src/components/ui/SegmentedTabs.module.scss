@@ -87,10 +87,10 @@
 .root {
   gap: 0;
   padding: 0;
-  background: var(--neo-white, var(--bg-primary));
+  background: var(--neo-surface-raised, var(--bg-primary));
   border: 2px solid var(--neo-ink, var(--border-color));
   border-radius: 0;
-  box-shadow: 2px 2px 0 var(--neo-ink, #111);
+  box-shadow: 2px 2px 0 var(--neo-ink, #1a1a1a);
 }
 
 .item {
@@ -105,13 +105,13 @@
 
   &:hover:not(.disabled) {
     color: #111;
-    background: var(--neo-cyan, #56d7f2);
+    background: var(--neo-accent-3, #a3e635);
   }
 }
 
 .active,
 .active:hover:not(.disabled) {
   color: #111;
-  background: var(--neo-yellow, #ffd440);
+  background: var(--neo-accent-5, #fbbf24);
   box-shadow: none;
 }
