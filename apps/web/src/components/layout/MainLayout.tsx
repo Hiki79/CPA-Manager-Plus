@@ -155,6 +155,13 @@ const headerIcons = {
       <path d="M9.5 15v-2h2" />
     </svg>
   ),
+  swissTheme: (
+    <svg {...headerIconProps}>
+      <rect x="3" y="3" width="18" height="18" rx="1" strokeWidth="2" />
+      <path d="M3 9h18" strokeWidth="1.5" />
+      <path d="M9 9v12" strokeWidth="1.5" />
+    </svg>
+  ),
   visualEffectsFull: (
     <svg {...headerIconProps}>
       <path d="m12 3 1.85 5.15L19 10l-5.15 1.85L12 17l-1.85-5.15L5 10l5.15-1.85L12 3z" />
@@ -189,6 +196,7 @@ const THEME_OPTIONS: Array<{
   { key: 'auto', labelKey: 'theme.auto', icon: headerIcons.autoTheme },
   { key: 'white', labelKey: 'theme.white', icon: headerIcons.sun },
   { key: 'dark', labelKey: 'theme.dark', icon: headerIcons.moon },
+  { key: 'swiss', labelKey: 'theme.swiss', icon: headerIcons.swissTheme },
 ];
 
 const VISUAL_EFFECTS_OPTIONS: Array<{
