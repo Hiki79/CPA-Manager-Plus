@@ -349,7 +349,16 @@
   --color-success: #2E7D32;
   --color-warning: #C8372D;
   --color-danger: #C8372D;
+
+  h1, h2, h3, .heading, .title, .navbar-brand, .breadcrumb-item {
+    font-family: 'Noto Serif SC', 'Songti SC', 'SimSun', serif;
+  }
+
+  * {
+    box-shadow: none !important;
+  }
 }
+
 
 
 @media (max-width: 768px),

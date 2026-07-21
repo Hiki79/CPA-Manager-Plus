@@ -73,7 +73,7 @@ const applyTheme = (resolved: AppliedTheme) => {
 export const useThemeStore = create<ThemeState>()(
   persist(
     (set, get) => ({
-      theme: 'white',
+      theme: 'swiss',
       resolvedTheme: 'light',
 
       setTheme: (theme) => {
@@ -87,7 +87,7 @@ export const useThemeStore = create<ThemeState>()(
 
       cycleTheme: () => {
         const { theme, setTheme } = get();
-        const order: Theme[] = ['auto', 'white', 'dark', 'swiss'];
+        const order: Theme[] = ['swiss', 'auto', 'white', 'dark'];
         const currentIndex = order.indexOf(theme);
         const nextTheme = order[(currentIndex + 1) % order.length];
         setTheme(nextTheme);
@@ -97,7 +97,7 @@ export const useThemeStore = create<ThemeState>()(
         const { theme, setTheme } = get();
 
         // 应用已保存的主题
-        setTheme(isTheme(theme) ? theme : 'white');
+        setTheme(isTheme(theme) && theme !== 'white' ? theme : 'swiss');
 
         // 监听系统主题变化（仅在 auto 模式下生效）
         if (!window.matchMedia) {
